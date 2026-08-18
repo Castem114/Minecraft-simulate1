@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>方块世界 · 我的世界复刻</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --slot: 52px;
+    --accent: #5fd35f;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif; }
+
+  #game { display: block; width: 100%; height: 100%; cursor: crosshair; }
+
+  /* ---- HUD ---- */
+  #hud { position: fixed; inset: 0; pointer-events: none; user-select: none; }
+
+  #crosshair {
+    position: absolute; left: 50%; top: 50%; width: 22px; height: 22px;
+    transform: translate(-50%, -50%);
+  }
+  #crosshair::before, #crosshair::after {
+    content: ""; position: absolute; background: rgba(255,255,255,.9);
+    box-shadow: 0 0 2px rgba(0,0,0,.8);
+  }
+  #crosshair::before { left: 10px; top: 1px; width: 2px; height: 20px; }
+  #crosshair::after  { left: 1px; top: 10px; width: 20px; height: 2px; }
+
+  #stats {
+    position: absolute; left: 12px; top: 10px; color: #fff; font-size: 13px;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    text-shadow: 0 1px 2px rgba(0,0,0,.9); line-height: 1.7;
+  }
+  #msg {
+    position: absolute; left: 50%; top: 14%; transform: translateX(-50%);
+    color: #fff; font-size: 16px; text-shadow: 0 1px 3px #000;
+    opacity: 0; transition: opacity .4s;
+  }
+  #beside {
+    position: absolute; left: 50%; bottom: calc(var(--slot) + 26px); transform: translateX(-50%);
+    color: #fff; font-size: 14px; text-shadow: 0 1px 3px #000; opacity: .95;
+  }
+
+  #hotbar {
+    position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%);
+    display: flex; gap: 4px; padding: 4px; background: rgba(0,0,0,.45);
+    border-radius: 8px; border: 2px solid rgba(255,255,255,.25);
+  }
+  .slot {
+    width: var(--slot); height: var(--slot); position: relative;
+    background: rgba(255,255,255,.08); border: 2px solid rgba(255,255,255,.28);
+    border-radius: 4px; display: flex; align-items: center; justify-content: center;
+  }
+  .slot canvas { width: 36px; height: 36px; image-rendering: pixelated; }
+  .slot .num {
+    position: absolute; left: 3px; top: 1px; font-size: 10px; color: rgba(255,255,255,.6);
+  }
+  .slot.sel { border-color: #fff; background: rgba(255,255,255,.22); box-shadow: 0 0 10px rgba(255,255,255,.25); }
+
+  /* ---- 遮罩 / 菜单 ---- */
+  #overlay {
+    position: fixed; inset: 0; background: rgba(10, 14, 22, 0.82);
+    display: flex; align-items: center; justify-content: center; z-index: 20;
+  }
+  #panel {
+    width: min(560px, 92vw); text-align: center; color: #e8eef5;
+    background: rgba(30,38,54,.9); border: 1px solid rgba(255,255,255,.15);
+    border-radius: 14px; padding: 34px 30px; box-shadow: 0 20px 60px rgba(0,0,0,.6);
+  }
+  #panel h1 {
+    font-size: 42px; letter-spacing: 2px; margin-bottom: 6px;
+    background: linear-gradient(90deg, #5fd35f, #3aa0ff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    font-weight: 900;
+  }
+  #panel .sub { color: #9fb0c5; margin-bottom: 22px; font-size: 15px; }
+  #ring { width: 100%; height: 10px; background: #1c2434; border-radius: 6px; overflow: hidden; }
+  #bar { width: 0%; height: 100%; background: linear-gradient(90deg, #5fd35f, #3aa0ff); transition: width .15s; }
+  #prog-txt { margin-top: 10px; font-size: 13px; color: #9fb0c5; min-height: 18px; }
+
+  #startBtn {
+    display: none; margin: 20px auto 0; padding: 12px 42px; font-size: 18px; font-weight: 700;
+    color: #10231a; background: linear-gradient(90deg, #5fd35f, #43c04f);
+    border: none; border-radius: 10px; cursor: pointer; letter-spacing: 3px;
+    box-shadow: 0 6px 20px rgba(95,211,95,.35);
+  }
+  #startBtn:hover { filter: brightness(1.1); transform: translateY(-1px); }
+
+  #help {
+    display: none; margin-top: 22px; text-align: left; font-size: 13px; line-height: 2;
+    color: #c3cede; background: rgba(0,0,0,.25); border-radius: 10px; padding: 14px 18px;
+  }
+  #help b { color: #8fe08f; font-weight: 700; }
+  #pauseTitle { display: none; font-size: 24px; margin-bottom: 8px; color: #ffd27a; font-weight: 800; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="hud" style="display:none">
+  <div id="crosshair"></div>
+  <div id="stats"></div>
+  <div id="msg"></div>
+  <div id="beside"></div>
+  <div id="hotbar"></div>
+</div>
+
+<div id="overlay">
+  <div id="panel">
+    <h1>方块世界</h1>
+    <p class="sub">浏览器里的体素沙盒 · 复刻《我的世界》核心玩法</p>
+    <div id="ring"><div id="bar"></div></div>
+    <p id="prog-txt">正在生成世界…</p>
+    <div id="pauseTitle">⏸ 游戏已暂停</div>
+    <button id="startBtn">⚡ 开始游戏</button>
+    <div id="help">
+      <b>WASD</b> 移动 ｜ <b>空格</b> 跳跃 ｜ <b>Shift</b> 潜行<br/>
+      <b>鼠标左键</b> 破坏方块 ｜ <b>鼠标右键</b> 放置方块 ｜ <b>中键</b> 吸取方块<br/>
+      <b>1-9 / 滚轮</b> 选择方块 ｜ <b>Ctrl</b> 疾跑 ｜ <b>双击空格 / F</b> 飞行（空格上升·Shift下降）<br/>
+      <b>G</b> 暂停昼夜 ｜ <b>P</b> 清除存档并重建世界 ｜ <b>Esc</b> 暂停
+    </div>
+  </div>
+</div>
+
+<script>
+  // 若 three.js 模块加载失败，8 秒后给出提示（__mc_ready 由 game.js 置位）
+  window.setTimeout(function () {
+    if (!window.__mc_ready) {
+      document.getElementById('prog-txt').textContent =
+        '⚠️ three.js 加载失败 —— 请检查网络（需访问 unpkg.com CDN），或使用本地服务器打开。';
+    }
+  }, 8000);
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
+<script type="module" src="game.js"></script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+# macOS
+.DS_Store
+
+# 编辑器 / IDE
+.vscode/
+.idea/
+*.swp
+
+# 日志 / 临时
+*.log
+*.tmp
+
+# Node
+node_modules/
+npm-debug.log*
