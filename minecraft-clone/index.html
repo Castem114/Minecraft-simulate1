@@ -131,14 +131,14 @@
   window.setTimeout(function () {
     if (!window.__mc_ready) {
       document.getElementById('prog-txt').textContent =
-        '⚠️ three.js 加载失败 —— 请检查网络（需访问 unpkg.com CDN），或使用本地服务器打开。';
+        '⚠️ three.js 加载失败 —— 请稍后刷新重试，或改用本地服务器打开（http://127.0.0.1:8377）。';
     }
   }, 8000);
 </script>
 <script type="importmap">
 {
   "imports": {
-    "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+    "three": "./vendor/three.module.js"
   }
 }
 </script>

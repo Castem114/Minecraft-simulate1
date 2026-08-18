@@ -1,19 +1,19 @@
 # 方块世界 · 我的世界复刻（浏览器体素沙盒）
 
-一个用 Three.js 从零实现的《我的世界》核心玩法复刻，纯前端、无需安装依赖
-（运行时仅从 CDN 加载 three.js）。
+一个用 Three.js 从零实现的《我的世界》核心玩法复刻。纯前端、零依赖、
+**完全离线可运行**（three.js 已内嵌在 `vendor/`，无需联网）。
 
 ## 运行方式
 
 任选其一：
 
-1. **直接双击** `index.html` 打开（需要联网加载 three.js CDN）；
-2. 本地服务器（推荐）：
+1. **本地服务器**（推荐，也支持离线）：双击打开 `index.html` 以外的另一种方式——
    ```bash
    cd minecraft-clone
    python3 -m http.server 8377
    # 浏览器打开 http://127.0.0.1:8377
    ```
+2. 直接双击 `index.html`（Chrome/Edge 对 `file://` 下 ES 模块有限制，仍推荐方式 1）。
 
 ## 操作
 

@@ -584,12 +584,30 @@ function buildParticles() {
   );
   particles.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   scene.add(particles);
+
+  // 初始化粒子池（每个粒子隐藏在地图下方）
+  const dummy = new THREE.Object3D();
+  dummy.position.set(0, -100, 0);
+  dummy.scale.setScalar(0.01);
+  dummy.updateMatrix();
+  for (let i = 0; i < MAX_PARTICLES; i++) {
+    pObj.push({
+      alive: false, ttl: 0, age: 0,
+      color: new THREE.Color(),
+      pos: new THREE.Vector3(0, -100, 0),
+      v: new THREE.Vector3(),
+    });
+    particles.setMatrixAt(i, dummy.matrix);
+  }
+  particles.instanceMatrix.needsUpdate = true;
 }
 
 function spawnParticles(x, y, z, color, count = 14) {
   const dummy = new THREE.Object3D();
   for (let i = 0; i < count; i++) {
-    const p = pObj[pCursor++ % MAX_PARTICLES];
+    const idx = pCursor++ % MAX_PARTICLES;
+    const p = pObj[idx];
+    if (!p) return; // 防御：粒子池未就绪时直接忽略，不阻断破坏/放置
     p.alive = true;
     p.ttl = 0.45 + Math.random() * 0.35;
     p.age = 0;
@@ -600,7 +618,7 @@ function spawnParticles(x, y, z, color, count = 14) {
       z + (Math.random() - 0.5) * 0.5
     );
     p.v.set((Math.random() - 0.5) * 4, Math.random() * 5 + 1, (Math.random() - 0.5) * 4);
-    particles.setColorAt((pCursor - 1 + MAX_PARTICLES) % MAX_PARTICLES, p.color);
+    particles.setColorAt(idx, p.color);
   }
   if (particles.instanceColor) particles.instanceColor.needsUpdate = true;
 }
@@ -1035,9 +1053,11 @@ function setupInput() {
   document.addEventListener('keyup', (e) => keys.delete(e.code));
   window.addEventListener('blur', () => keys.clear());
 
-  canvas.addEventListener('mousedown', (e) => {
+  // 鼠标监听挂在 document：指针锁定时事件会重定向到锁定元素，
+  // 挂 document 可确保即使有 UI 遮挡画布，按住/松开也不会丢事件。
+  document.addEventListener('mousedown', (e) => {
     if (!locked) return;
-    ensureAudio();
+    try { ensureAudio(); } catch (err) { /* 音频初始化异常不阻断操作 */ }
     if (e.button === 0) { mouseDown.left = true; lastBreak = 0; }
     if (e.button === 2) { mouseDown.right = true; lastPlace = 0; }
     if (e.button === 1) {
@@ -1054,7 +1074,7 @@ function setupInput() {
     if (e.button === 0) mouseDown.left = false;
     if (e.button === 2) mouseDown.right = false;
   });
-  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  document.addEventListener('contextmenu', (e) => e.preventDefault());
 
   document.addEventListener('mousemove', (e) => {
     if (!locked) return;
@@ -1064,7 +1084,7 @@ function setupInput() {
     if (pitch < -1.55) pitch = -1.55;
   });
 
-  canvas.addEventListener('wheel', (e) => {
+  document.addEventListener('wheel', (e) => {
     if (!locked) return;
     if (e.deltaY > 0) selectSlot(selected + 1);
     else selectSlot(selected - 1);
@@ -1220,6 +1240,9 @@ const mcDebug = {
   worldGet, solidAt, setBlock, raycastVoxel, player,
   setLocked(v) { locked = !!v; },
   teleport(x, y, z) { player.x = x; player.y = y; player.z = z; player.vx = player.vy = player.vz = 0; player.onGround = false; },
+  setLook(ya, pi) { yaw = ya; pitch = Math.max(-1.55, Math.min(1.55, pi)); },
+  get mouseState() { return { left: mouseDown.left, right: mouseDown.right, breakAt: lastBreak, placeAt: lastPlace }; },
+  get targetInfo() { return target; },
   get flying() { return flying; },
   get locked() { return locked; },
   get selected() { return selected; },
