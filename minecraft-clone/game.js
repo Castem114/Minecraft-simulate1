@@ -225,7 +225,7 @@ function makeAtlas(){
   dr(0,1,g=>{for(let y=0;y<T;y++)for(let x=0;x<T;x++)px(x,y,(y%8===0||y%8===7)?'#8a6740':(hash2(x*3,y)<0.5?'#b48a4f':'#a87f47'));});
   dr(1,1,g=>{for(let y=0;y<T;y++)for(let x=0;x<T;x++){const blob=hash2(Math.floor(x/3)*7,Math.floor(y/3)*5);const v=0x66+blob*60;px(x,y,`rgb(${v},${v},${Math.min(255,v+4)})`);}});
   dr(2,1,g=>{for(let y=0;y<T;y++)for(let x=0;x<T;x++){const row=y>>2;const off=(row&1)*4;px(x,y,(y%4===3||(x+off)%8===7)?'#b0a290':'#a55a55');}});
-  dr(3,1,g=>{g.clearRect(0,0,T,T);for(let y=0;y<T;y++)for(let x=0;x<T;x++){const h=hash2(x*5,y*7);if(h<0.12)g.fillStyle='rgba(255,255,255,0.35)';else if(h<0.85)g.fillStyle='rgba(190,225,255,0.12)';else g.fillStyle='rgba(210,240,255,0.25)';g.fillRect(x,y,1,1);}});
+  dr(3,1,g=>{g.clearRect(0,0,T,T);for(let y=0;y<T;y++)for(let x=0;x<T;x++){const h=hash2(x*5,y*7);if(h<0.12)g.fillStyle='rgba(255,255,255,0.6)';else if(h<0.85)g.fillStyle='rgba(190,225,255,0.35)';else g.fillStyle='rgba(210,240,255,0.5)';g.fillRect(x,y,1,1);}});
   dr(4,1,g=>{for(let y=0;y<T;y++)for(let x=0;x<T;x++){const v=0xf2+n(x,y,6);px(x,y,`rgb(${v},${v},${v})`);}});
   dr(5,1,g=>{for(let y=0;y<T;y++)for(let x=0;x<T;x++){const v=0x66+n(x,y,6);px(x,y,`rgb(${v},${v-8},${v-12})`);}});
   dr(6,1,g=>{for(let y=0;y<T;y++)for(let x=0;x<T;x++){const v=0x24+n(x,y,8);px(x,y,`rgb(${v},${v},${v})`);}});
@@ -308,7 +308,46 @@ function buildChunkMeshes(cx,cz){
   if(glPos.length>0){const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(glPos,3));geo.setAttribute('uv',new THREE.Float32BufferAttribute(glUv,2));geo.setIndex(glIdx);const mesh=new THREE.Mesh(geo,glassMaterial);mesh.position.set(ox,0,oz);mesh.renderOrder=1;scene.add(mesh);c.glassMesh=mesh;}
 }
 function rebuildAround(x,y,z){const cx=x>>4,cz=z>>4;buildChunkMeshes(cx,cz);if((x&15)===0)buildChunkMeshes(cx-1,cz);if((x&15)===15)buildChunkMeshes(cx+1,cz);if((z&15)===0)buildChunkMeshes(cx,cz-1);if((z&15)===15)buildChunkMeshes(cx,cz+1);}
-// 沙子下落：记录需要下落的沙块
+// 流体流动：跟踪水源，BFS 扩散
+const fluidSources=new Set();
+const FLUID_RADIUS=7;
+function spreadFluid(x,y,z,fluidId){
+  if(!inWorld(x,y,z))return;
+  const key=`${x},${y},${z}`;
+  fluidSources.add(key);
+  const visited=new Set([key]);
+  const queue=[{x,y,z,dist:0}];
+  while(queue.length>0){
+    const cur=queue.shift();
+    if(cur.dist>=FLUID_RADIUS)continue;
+    // 四个水平方向 + 向下
+    const dirs=[[1,0,0],[-1,0,0],[0,0,1],[0,0,-1],[0,-1,0]];
+    for(const[dx,dy,dz]of dirs){
+      const nx=cur.x+dx,ny=cur.y+dy,nz=cur.z+dz;
+      if(!inWorld(nx,ny,nz))continue;
+      const nk=`${nx},${ny},${nz}`;
+      if(visited.has(nk))continue;
+      visited.add(nk);
+      const nb=worldGet(nx,ny,nz);
+      if(nb===BK.AIR||(fluidId===BK.WATER&&nb===BK.LAVA)||(fluidId===BK.LAVA&&nb===BK.WATER)){
+        writeBlock(nx,ny,nz,fluidId);
+        rebuildAround(nx,ny,nz);
+        queue.push({x:nx,y:ny,z:nz,dist:cur.dist+1});
+      }
+    }
+  }
+}
+// 收集流体（只收集水源格）
+function collectFluid(x,y,z){
+  const b=worldGet(x,y,z);
+  if(b!==BK.WATER&&b!==BK.LAVA)return null;
+  if(fluidSources.has(`${x},${y},${z}`)){
+    setBlock(x,y,z,BK.AIR);
+    fluidSources.delete(`${x},${y},${z}`);
+    return b===BK.WATER?BK.WATER_BUCKET:BK.LAVA_BUCKET;
+  }
+  return null;
+}
 const fallingSands=new Set();
 function checkSandFall(x,y,z){
   if(!inWorld(x,y,z))return;
@@ -350,7 +389,7 @@ const SAVE_KEY='mcclone_world_v1',PLAYER_KEY='mcclone_player_v1',SEED_KEY='mcclo
 function scheduleSave(){clearTimeout(saveTimer);saveTimer=setTimeout(saveNow,400);}
 function saveNow(){try{localStorage.setItem(SAVE_KEY,JSON.stringify({edits:[...edits.entries()]}));localStorage.setItem(SEED_KEY,String(worldSeed));}catch(e){}}
 function loadSave(){try{const raw=localStorage.getItem(SAVE_KEY);if(!raw)return;const data=JSON.parse(raw);if(data&&Array.isArray(data.edits))for(const[key,id]of data.edits)edits.set(String(key),Number(id));const s=localStorage.getItem(SEED_KEY);if(s!==null&&!isNaN(Number(s)))worldSeed=Number(s);}catch(e){}}
-function resetWorld(newSeed){if(typeof newSeed==='number')worldSeed=newSeed;else worldSeed=Math.floor(Math.random()*100000);try{localStorage.removeItem(SAVE_KEY);localStorage.removeItem(PLAYER_KEY);localStorage.setItem(SEED_KEY,String(worldSeed));}catch(e){}location.reload();}
+function resetWorld(newSeed){if(typeof newSeed==='number')worldSeed=newSeed;else worldSeed=Math.floor(Math.random()*100000);edits.clear();try{localStorage.removeItem(SAVE_KEY);localStorage.removeItem(PLAYER_KEY);localStorage.setItem(SEED_KEY,String(worldSeed));}catch(e){}location.reload();}
 function loadPlayerPos(){try{const raw=localStorage.getItem(PLAYER_KEY);if(!raw)return null;const d=JSON.parse(raw);if(d&&typeof d.x==='number'&&inWorld(d.x,d.y,d.z))return d;}catch(e){}return null;}
 function savePlayerPos(){try{localStorage.setItem(PLAYER_KEY,JSON.stringify({x:player.x,y:player.y,z:player.z,flying}));}catch(e){}}
 let lastPlayerSave=0;const PLAYER_SAVE_INTERVAL=3000;
@@ -455,7 +494,22 @@ function interact(now){
   if(target&&target.dist<=REACH){highlight.visible=true;highlight.position.set(target.x+0.5,target.y+0.5,target.z+0.5);if(!highlight.parent)scene.add(highlight);}else highlight.visible=false;
   if(target&&target.dist<=REACH){const px=target.x+target.nx,py=target.y+target.ny,pz=target.z+target.nz;if(canPlaceAt(px,py,pz)){ghost.visible=true;ghost.position.set(px+0.5,py+0.5,pz+0.5);if(!ghost.parent)scene.add(ghost);}else ghost.visible=false;}else ghost.visible=false;
   if(!inventoryOpen&&mouseDown.left&&target&&target.dist<=REACH&&now-lastBreak>0.28){const b=worldGet(target.x,target.y,target.z);if(b!==BK.BEDROCK){lastBreak=now;const def=BLOCKS[b];spawnParticles(target.x+0.5,target.y+0.5,target.z+0.5,def?def.color:0x888888);sfx.dig();setBlock(target.x,target.y,target.z,BK.AIR);}}
-  if(!inventoryOpen&&mouseDown.right&&target&&target.dist<=REACH&&now-lastPlace>0.22){const px=target.x+target.nx,py=target.y+target.ny,pz=target.z+target.nz;if(canPlaceAt(px,py,pz)){lastPlace=now;let id=HOTBAR[selected];const def=BLOCKS[id];if(def&&def.bucket!==undefined)id=def.bucket;if(id!==BK.AIR){setBlock(px,py,pz,id);sfx.place();spawnParticles(px+0.5,py+0.5,pz+0.5,BLOCKS[id].color,6);}}}
+  if(!inventoryOpen&&mouseDown.right&&target&&target.dist<=REACH&&now-lastPlace>0.22){
+    const px=target.x+target.nx,py=target.y+target.ny,pz=target.z+target.nz;
+    // 收集流体（空桶/水桶/岩浆桶 对准水源）
+    const targetBlock=worldGet(target.x,target.y,target.z);
+    const slotId=HOTBAR[selected];
+    if((targetBlock===BK.WATER||targetBlock===BK.LAVA)&&fluidSources.has(`${target.x},${target.y},${target.z}`)){
+      const collected=collectFluid(target.x,target.y,target.z);
+      if(collected){HOTBAR[selected]=collected;rebuildHotbar();sfx.place();lastPlace=now;return;}
+    }
+    // 放置
+    if(canPlaceAt(px,py,pz)){lastPlace=now;let id=slotId;const def=BLOCKS[id];
+      if(def&&def.bucket!==undefined)id=def.bucket;
+      if(id!==BK.AIR){setBlock(px,py,pz,id);sfx.place();spawnParticles(px+0.5,py+0.5,pz+0.5,BLOCKS[id].color,6);
+        if(id===BK.WATER||id===BK.LAVA)spreadFluid(px,py,pz,id);}
+    }
+  }
 }
 /* ===== 背包 UI ===== */
 // 背包分类标签页
@@ -580,9 +634,9 @@ function buildSaveUI(){
   [1,2,3].forEach(n=>{
     const row=document.createElement('div');row.style.cssText='display:flex;gap:8px;margin-bottom:4px;';
     const slotLabel=document.createElement('span');slotLabel.textContent=`槽 ${n}:`;slotLabel.style.cssText='color:#c3cede;font-size:12px;width:30px;';
-    const saveBtn=document.createElement('button');saveBtn.textContent='💾存';saveBtn.style.cssText='padding:4px 12px;border:none;border-radius:6px;font-size:12px;cursor:pointer;background:rgba(95,211,95,0.3);color:#d0e8d0;';
+    const saveBtn=document.createElement('button');saveBtn.textContent='💾存';saveBtn.style.cssText='padding:4px 12px;border:2px solid rgba(95,211,95,0.4);font-size:13px;cursor:pointer;background:rgba(95,211,95,0.2);color:#a0e0a0;font-family:\"Courier New\",monospace;';
     saveBtn.addEventListener('click',()=>saveSlot(n));
-    const loadBtn=document.createElement('button');loadBtn.textContent='📂读';loadBtn.style.cssText='padding:4px 12px;border:none;border-radius:6px;font-size:12px;cursor:pointer;background:rgba(60,160,255,0.3);color:#d0d8f0;';
+    const loadBtn=document.createElement('button');loadBtn.textContent='📂读';loadBtn.style.cssText='padding:4px 12px;border:2px solid rgba(60,160,255,0.4);font-size:13px;cursor:pointer;background:rgba(60,160,255,0.2);color:#a0c0f0;font-family:\"Courier New\",monospace;';
     loadBtn.addEventListener('click',()=>loadSlot(n));
     row.appendChild(slotLabel);row.appendChild(saveBtn);row.appendChild(loadBtn);div.appendChild(row);
   });
@@ -600,7 +654,7 @@ function init(){
   solidMaterial=new THREE.MeshLambertMaterial({map:atlasTex,vertexColors:true});
   plantMaterial=new THREE.MeshBasicMaterial({map:plantAtlasTex,transparent:true,alphaTest:0.15,depthWrite:true,depthTest:true,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1});
   glowMaterial=new THREE.MeshBasicMaterial({vertexColors:true,transparent:true,opacity:0.45,blending:THREE.AdditiveBlending,depthWrite:false});
-  glassMaterial=new THREE.MeshBasicMaterial({map:atlasTex,transparent:true,alphaTest:0.15,depthWrite:true,depthTest:true,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1});
+  glassMaterial=new THREE.MeshBasicMaterial({map:atlasTex,transparent:true,alphaTest:0.1,depthWrite:false,depthTest:true,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:2,polygonOffsetUnits:2});
   buildSky();buildParticles();window.__mc_ready=true;
   // 先加载初始区块，再生成玩家
   const pcx=0,pcz=0;
