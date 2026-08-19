@@ -219,7 +219,7 @@ function makeAtlas(){
   dr(0,1,g=>{for(let y=0;y<T;y++)for(let x=0;x<T;x++)px(x,y,(y%8===0||y%8===7)?'#8a6740':(hash2(x*3,y)<0.5?'#b48a4f':'#a87f47'));});
   dr(1,1,g=>{for(let y=0;y<T;y++)for(let x=0;x<T;x++){const blob=hash2(Math.floor(x/3)*7,Math.floor(y/3)*5);const v=0x66+blob*60;px(x,y,`rgb(${v},${v},${Math.min(255,v+4)})`);}});
   dr(2,1,g=>{for(let y=0;y<T;y++)for(let x=0;x<T;x++){const row=y>>2;const off=(row&1)*4;px(x,y,(y%4===3||(x+off)%8===7)?'#b0a290':'#a55a55');}});
-  dr(3,1,g=>{g.clearRect(0,0,T,T);for(let y=0;y<T;y++)for(let x=0;x<T;x++){const h=hash2(x*5,y*7);if(h<0.15)g.fillStyle='rgba(255,255,255,0.8)';else if(h<0.85)g.fillStyle='rgba(180,220,248,0.25)';else g.fillStyle='rgba(200,235,255,0.6)';g.fillRect(x,y,1,1);}});
+  dr(3,1,g=>{g.clearRect(0,0,T,T);for(let y=0;y<T;y++)for(let x=0;x<T;x++){const h=hash2(x*5,y*7);if(h<0.12)g.fillStyle='rgba(255,255,255,0.35)';else if(h<0.85)g.fillStyle='rgba(190,225,255,0.12)';else g.fillStyle='rgba(210,240,255,0.25)';g.fillRect(x,y,1,1);}});
   dr(4,1,g=>{for(let y=0;y<T;y++)for(let x=0;x<T;x++){const v=0xf2+n(x,y,6);px(x,y,`rgb(${v},${v},${v})`);}});
   dr(5,1,g=>{for(let y=0;y<T;y++)for(let x=0;x<T;x++){const v=0x66+n(x,y,6);px(x,y,`rgb(${v},${v-8},${v-12})`);}});
   dr(6,1,g=>{for(let y=0;y<T;y++)for(let x=0;x<T;x++){const v=0x24+n(x,y,8);px(x,y,`rgb(${v},${v},${v})`);}});
@@ -348,6 +348,9 @@ function resetWorld(){try{localStorage.removeItem(SAVE_KEY);localStorage.removeI
 function loadPlayerPos(){try{const raw=localStorage.getItem(PLAYER_KEY);if(!raw)return null;const d=JSON.parse(raw);if(d&&typeof d.x==='number'&&inWorld(d.x,d.y,d.z))return d;}catch(e){}return null;}
 function savePlayerPos(){try{localStorage.setItem(PLAYER_KEY,JSON.stringify({x:player.x,y:player.y,z:player.z,flying}));}catch(e){}}
 let lastPlayerSave=0;const PLAYER_SAVE_INTERVAL=3000;
+// 存档/读档（3 个槽位）
+function saveSlot(n){try{localStorage.setItem(`mcclone_slot_${n}`,JSON.stringify({edits:[...edits.entries()],player:{x:player.x,y:player.y,z:player.z,flying},time:Date.now()}));showMsg(`已保存到存档 ${n}`);}catch(e){showMsg('保存失败');}}
+function loadSlot(n){try{const raw=localStorage.getItem(`mcclone_slot_${n}`);if(!raw){showMsg(`存档 ${n} 为空`);return;}const data=JSON.parse(raw);localStorage.setItem(SAVE_KEY,JSON.stringify({edits:data.edits||[]}));localStorage.setItem(PLAYER_KEY,JSON.stringify(data.player||{x:0.5,y:32,z:0.5}));showMsg(`已读取存档 ${n}，正在重载…`);setTimeout(()=>location.reload(),800);}catch(e){showMsg('读档失败');}}
 function maybeSavePlayer(now){if(now-lastPlayerSave>=PLAYER_SAVE_INTERVAL){lastPlayerSave=now;savePlayerPos();}}
 /* ===== 天空/昼夜 ===== */
 let dayTime=0.28,dayPaused=false;const DAY_LEN=300;
@@ -440,7 +443,7 @@ function raycastVoxel(ox,oy,oz,dx,dy,dz,maxD){let x=Math.floor(ox),y=Math.floor(
 function updateTarget(){const dir=new THREE.Vector3();camera.getWorldDirection(dir);target=raycastVoxel(camera.position.x,camera.position.y,camera.position.z,dir.x,dir.y,dir.z,REACH);}
 const highlight=(()=>{const box=new THREE.BoxGeometry(1.004,1.004,1.004);const edges=new THREE.LineSegments(new THREE.EdgesGeometry(box),new THREE.LineBasicMaterial({color:0xffffff,transparent:true,opacity:0.85}));edges.visible=false;return edges;})();
 const ghost=(()=>{const box=new THREE.BoxGeometry(1.004,1.004,1.004);const edges=new THREE.LineSegments(new THREE.EdgesGeometry(box),new THREE.LineBasicMaterial({color:0x66ff66,transparent:true,opacity:0.45}));edges.visible=false;return edges;})();
-function canPlaceAt(px,py,pz){if(!inWorld(px,py,pz)||worldGet(px,py,pz)!==BK.AIR)return false;return!(px+1>player.x-player.w&&px<player.x+player.w+1&&py+1>player.y&&py<player.y+player.h&&pz+1>player.z-player.w&&pz<player.z+player.w+1);}
+function canPlaceAt(px,py,pz){if(!inWorld(px,py,pz)||worldGet(px,py,pz)!==BK.AIR)return false;if(isPlant(worldGet(px,py-1,pz)))return false;return!(px+1>player.x-player.w&&px<player.x+player.w+1&&py+1>player.y&&py<player.y+player.h&&pz+1>player.z-player.w&&pz<player.z+player.w+1);}
 function interact(now){
   updateTarget();
   if(target&&target.dist<=REACH){highlight.visible=true;highlight.position.set(target.x+0.5,target.y+0.5,target.z+0.5);if(!highlight.parent)scene.add(highlight);}else highlight.visible=false;
@@ -471,7 +474,7 @@ function buildInventoryUI(){
   });
   panel.appendChild(tabBar);
   // 网格
-  const grid=document.createElement('div');grid.id='inv-grid';grid.style.cssText='display:grid;grid-template-columns:repeat(8,1fr);gap:5px;min-height:260px;';
+  const grid=document.createElement('div');grid.id='inv-grid';grid.style.cssText='display:grid;grid-template-columns:repeat(7,1fr);gap:5px;min-height:260px;';
   panel.appendChild(grid);
   // 底部快捷栏
   const invHotbar=document.createElement('div');invHotbar.id='inv-hotbar';invHotbar.style.cssText='display:flex;gap:4px;padding:8px 4px 4px;margin-top:12px;border-top:1px solid rgba(255,255,255,0.1);justify-content:center;';
@@ -484,11 +487,13 @@ function buildInventoryUI(){
     const tab=INV_TABS[invTab];
     tab.blocks.forEach(id=>{
       const def=BLOCKS[id];if(!def)return;
-      const slot=document.createElement('div');slot.style.cssText='width:48px;height:48px;background:rgba(255,255,255,0.08);border:2px solid rgba(255,255,255,0.2);border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:center;';
+      const slot=document.createElement('div');slot.style.cssText='width:68px;min-height:76px;background:rgba(255,255,255,0.08);border:2px solid rgba(255,255,255,0.2);border-radius:4px;cursor:pointer;display:flex;flex-direction:column;align-items:center;padding:4px 2px;';
       const cv=document.createElement('canvas');cv.width=32;cv.height=32;slot.appendChild(cv);
       const g=cv.getContext('2d');g.imageSmoothingEnabled=false;
       if(def.plant!==undefined)g.drawImage(plantAtlasTex.image,def.plant*16,0,16,16,0,0,32,32);
       else{const tile=def.icon;const col=tile%ATLAS_COLS,row=Math.floor(tile/ATLAS_COLS);g.drawImage(atlasTex.image,col*16,row*16,16,16,0,0,32,32);}
+      const name=document.createElement('div');name.textContent=def.name;name.style.cssText='color:#b0b8c8;font-size:10px;margin-top:3px;text-align:center;line-height:1.2;overflow:hidden;text-overflow:ellipsis;max-width:64px;';
+      slot.appendChild(name);
       slot.addEventListener('click',()=>{HOTBAR[selected]=id;rebuildHotbar();renderInvHotbar();document.getElementById('beside').textContent=BLOCKS[id].name;sfx.click();});
       grid.appendChild(slot);
     });
@@ -557,6 +562,21 @@ const overlay=document.getElementById('overlay'),startBtn=document.getElementByI
 let ready=false;
 function setProgress(pct,txt){bar.style.width=pct+'%';if(txt)progTxt.textContent=txt;}
 function showPause(paused){if(paused){pauseTitle.style.display='block';startBtn.textContent='▶ 继续游戏';ring.style.display='none';progTxt.style.display='none';helpEl.style.display='block';overlay.style.display='flex';}else{overlay.style.display='none';}}
+function buildSaveUI(){
+  const div=document.createElement('div');div.style.cssText='margin-top:14px;padding:10px 0;border-top:1px solid rgba(255,255,255,0.1);';
+  const label=document.createElement('div');label.textContent='💾 存档管理';label.style.cssText='color:#9fb0c5;font-size:13px;margin-bottom:8px;';
+  div.appendChild(label);
+  [1,2,3].forEach(n=>{
+    const row=document.createElement('div');row.style.cssText='display:flex;gap:8px;margin-bottom:4px;';
+    const slotLabel=document.createElement('span');slotLabel.textContent=`槽 ${n}:`;slotLabel.style.cssText='color:#c3cede;font-size:12px;width:30px;';
+    const saveBtn=document.createElement('button');saveBtn.textContent='💾存';saveBtn.style.cssText='padding:4px 12px;border:none;border-radius:6px;font-size:12px;cursor:pointer;background:rgba(95,211,95,0.3);color:#d0e8d0;';
+    saveBtn.addEventListener('click',()=>saveSlot(n));
+    const loadBtn=document.createElement('button');loadBtn.textContent='📂读';loadBtn.style.cssText='padding:4px 12px;border:none;border-radius:6px;font-size:12px;cursor:pointer;background:rgba(60,160,255,0.3);color:#d0d8f0;';
+    loadBtn.addEventListener('click',()=>loadSlot(n));
+    row.appendChild(slotLabel);row.appendChild(saveBtn);row.appendChild(loadBtn);div.appendChild(row);
+  });
+  document.getElementById('panel').appendChild(div);
+}
 function startGame(){const canvas=document.getElementById('game');try{const ret=canvas.requestPointerLock();if(ret&&typeof ret.catch==='function')ret.catch(()=>{});}catch(e){}}
 /* ===== 主循环 / 初始化 ===== */
 const clock=new THREE.Clock();
@@ -577,14 +597,14 @@ function init(){
   ready=true;
   startBtn.style.display='inline-block';helpEl.style.display='block';document.getElementById('hud').style.display='block';
   setProgress(100,'世界已就绪');showMsg('欢迎来到方块世界！',4000);
-  buildInventoryUI();
+  buildInventoryUI();buildSaveUI();
 }
 function animate(){
   requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),0.05);
   if(ready)updateChunks();
   // 网格化队列
   if(meshQueue.length>0){for(let i=0;i<3&&meshQueue.length>0;i++){const[cx,cz]=meshQueue.shift();buildChunkMeshes(cx,cz);}meshQueueSet.clear();}
-  if(ready)updateFallingSands(15);
+  if(ready)updateFallingSands(7);
   if(locked&&!inventoryOpen){updatePlayer(dt);interact(performance.now()/1000);updateHUD(dt);if(ready)maybeSavePlayer(performance.now());}else{highlight.visible=false;ghost.visible=false;}
   updateSky(dt);updateParticles(dt);renderer.render(scene,camera);
 }
