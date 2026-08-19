@@ -96,6 +96,13 @@
   }
   #help b { color: #8fe08f; font-weight: 700; }
   #pauseTitle { display: none; font-size: 24px; margin-bottom: 8px; color: #ffd27a; font-weight: 800; }
+  /* 像素化 UI */
+  * { image-rendering: pixelated; image-rendering: crisp-edges; }
+  body { font-family: "Courier New", "PixelFont", monospace; }
+  #panel, #hotbar, #inventory-overlay, .slot, button { image-rendering: pixelated; }
+  canvas { image-rendering: pixelated; image-rendering: crisp-edges; }
+  #stats { font-family: "Courier New", monospace; font-size: 12px; }
+  #seedInput { font-family: "Courier New", monospace; }
 </style>
 </head>
 <body>
@@ -115,6 +122,11 @@
     <p class="sub">浏览器里的体素沙盒 · 复刻《我的世界》核心玩法</p>
     <div id="ring"><div id="bar"></div></div>
     <p id="prog-txt">正在生成世界…</p>
+    <div id="seedRow" style="display:flex;gap:8px;margin:10px 0;justify-content:center;align-items:center;font-size:13px;color:#9fb0c5;">
+      <span>🌍 种子</span>
+      <input id="seedInput" type="text" maxlength="10" value="" style="width:100px;padding:4px 8px;border:1px solid rgba(255,255,255,0.2);border-radius:6px;background:rgba(0,0,0,0.3);color:#e0e8f0;font-size:13px;text-align:center;image-rendering:pixelated;">
+      <button id="newWorldBtn" style="padding:4px 12px;border:none;border-radius:6px;font-size:12px;cursor:pointer;background:rgba(255,160,60,0.3);color:#f0d8b0;">🆕 新世界</button>
+    </div>
     <div id="pauseTitle">⏸ 游戏已暂停</div>
     <button id="startBtn">⚡ 开始游戏</button>
     <div id="help">
