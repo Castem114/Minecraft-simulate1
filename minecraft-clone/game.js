@@ -69,11 +69,11 @@ const BLOCKS = {
   [BK.PACKED_ICE]:BD({ name: '浮冰',     top: T.PACKED_ICE, side: T.PACKED_ICE, bottom: T.PACKED_ICE, solid: true, icon: T.PACKED_ICE, color: 0xc0e0f8, creative: true }),
   [BK.COAL_ORE]:     BD({ name: '煤矿石',     top: T.COAL_ORE, side: T.COAL_ORE, bottom: T.COAL_ORE, solid: true, icon: T.COAL_ORE, color: 0x3a3a3a, creative: true }),
   [BK.IRON_ORE]:     BD({ name: '铁矿石',     top: T.IRON_ORE, side: T.IRON_ORE, bottom: T.IRON_ORE, solid: true, icon: T.IRON_ORE, color: 0xc8a88a, creative: true }),
-  [BK.GOLD_ORE]:     BD({ name: '金矿石',     top: T.GOLD_ORE, side: T.GOLD_ORE, bottom: T.GOLD_ORE, solid: true, icon: T.GOLD_ORE, color: 0xe0c040, creative: true }),
-  [BK.LAPIS_ORE]:    BD({ name: '青金石矿石', top: T.LAPIS_ORE, side: T.LAPIS_ORE, bottom: T.LAPIS_ORE, solid: true, icon: T.LAPIS_ORE, color: 0x2a4a8a, creative: true }),
-  [BK.REDSTONE_ORE]: BD({ name: '红石矿石',   top: T.REDSTONE_ORE, side: T.REDSTONE_ORE, bottom: T.REDSTONE_ORE, solid: true, icon: T.REDSTONE_ORE, color: 0x8a2020, creative: true }),
-  [BK.DIAMOND_ORE]:  BD({ name: '钻石矿石',   top: T.DIAMOND_ORE, side: T.DIAMOND_ORE, bottom: T.DIAMOND_ORE, solid: true, icon: T.DIAMOND_ORE, color: 0x60c0c0, creative: true }),
-  [BK.EMERALD_ORE]:  BD({ name: '绿宝石矿石', top: T.EMERALD_ORE, side: T.EMERALD_ORE, bottom: T.EMERALD_ORE, solid: true, icon: T.EMERALD_ORE, color: 0x40b060, creative: true }),
+  [BK.GOLD_ORE]:     BD({ name: '金矿石',     top: T.GOLD_ORE, side: T.GOLD_ORE, bottom: T.GOLD_ORE, solid: true, icon: T.GOLD_ORE, color: 0xe0c040, creative: true, glow: 0xffd700 }),
+  [BK.LAPIS_ORE]:    BD({ name: '青金石矿石', top: T.LAPIS_ORE, side: T.LAPIS_ORE, bottom: T.LAPIS_ORE, solid: true, icon: T.LAPIS_ORE, color: 0x2a4a8a, creative: true, glow: 0x4466ff }),
+  [BK.REDSTONE_ORE]: BD({ name: '红石矿石',   top: T.REDSTONE_ORE, side: T.REDSTONE_ORE, bottom: T.REDSTONE_ORE, solid: true, icon: T.REDSTONE_ORE, color: 0x8a2020, creative: true, glow: 0xff4444 }),
+  [BK.DIAMOND_ORE]:  BD({ name: '钻石矿石',   top: T.DIAMOND_ORE, side: T.DIAMOND_ORE, bottom: T.DIAMOND_ORE, solid: true, icon: T.DIAMOND_ORE, color: 0x60c0c0, creative: true, glow: 0x66ffff }),
+  [BK.EMERALD_ORE]:  BD({ name: '绿宝石矿石', top: T.EMERALD_ORE, side: T.EMERALD_ORE, bottom: T.EMERALD_ORE, solid: true, icon: T.EMERALD_ORE, color: 0x40b060, creative: true, glow: 0x44ff66 }),
   [BK.SPRUCE_LOG]:       BD({ name: '云杉原木',   top: T.SPRUCE_LOG_TOP, side: T.SPRUCE_LOG_SIDE, bottom: T.SPRUCE_LOG_TOP, solid: true, icon: T.SPRUCE_LOG_SIDE, color: 0x4a3520, creative: true }),
   [BK.BIRCH_LOG]:        BD({ name: '白桦原木',   top: T.BIRCH_LOG_TOP, side: T.BIRCH_LOG_SIDE, bottom: T.BIRCH_LOG_TOP, solid: true, icon: T.BIRCH_LOG_SIDE, color: 0xc0b090, creative: true }),
   [BK.JUNGLE_LOG]:       BD({ name: '丛林原木',   top: T.JUNGLE_LOG_TOP, side: T.JUNGLE_LOG_SIDE, bottom: T.JUNGLE_LOG_TOP, solid: true, icon: T.JUNGLE_LOG_SIDE, color: 0x6a5030, creative: true }),
@@ -167,13 +167,14 @@ function loadChunk(cx,cz){
   const key=ck(cx,cz);if(chunks.has(key))return;if(Math.abs(cx)>MAX_WORLD_RADIUS||Math.abs(cz)>MAX_WORLD_RADIUS)return;
   const data=generateChunkData(cx,cz);const ox=cx*CHUNK,oz=cz*CHUNK;
   for(const[ek,id]of edits){const[ex,ey,ez]=ek.split(',').map(Number);if((ex>>4)===cx&&(ez>>4)===cz)data[ey*CHUNK*CHUNK+(ez&15)*CHUNK+(ex&15)]=id||0;}
-  chunks.set(key,{data,solidMesh:null,plantMesh:null});
+  chunks.set(key,{data,solidMesh:null,plantMesh:null,glowMesh:null});
   if(!meshQueueSet.has(key)){meshQueueSet.add(key);meshQueue.push([cx,cz]);}
 }
 function unloadChunk(cx,cz){
   const key=ck(cx,cz);const c=chunks.get(key);if(!c)return;
   if(c.solidMesh){scene.remove(c.solidMesh);c.solidMesh.geometry.dispose();c.solidMesh=null;}
   if(c.plantMesh){scene.remove(c.plantMesh);c.plantMesh.geometry.dispose();c.plantMesh=null;}
+  if(c.glowMesh){scene.remove(c.glowMesh);c.glowMesh.geometry.dispose();c.glowMesh=null;}
   chunks.delete(key);
 }
 function updateChunks(){
@@ -187,7 +188,7 @@ function updateChunks(){
   let loaded=0;for(const[cx,cz]of toLoad){if(loaded>=MAX_CHUNK_LOAD_PER_FRAME)break;loadChunk(cx,cz);loaded++;}
 }
 /* ===== 纹理 / 渲染 ===== */
-let renderer,scene,camera,atlasTex,solidMaterial,plantMaterial,plantAtlasTex;
+let renderer,scene,camera,atlasTex,solidMaterial,plantMaterial,glowMaterial,plantAtlasTex;
 const pUv=[];
 function makeAtlas(){
   const T=TILE_SZ,N=ATLAS_COLS,M=ATLAS_ROWS;const cv=document.createElement('canvas');cv.width=T*N;cv.height=T*M;const g=cv.getContext('2d');g.imageSmoothingEnabled=false;
@@ -221,13 +222,13 @@ function makeAtlas(){
   dr(7,2,nt(0x9a,0x9a,0x9a,0x9a,0x9a,0x9a,0.5,13));
   dr(0,3,g=>{for(let y=0;y<T;y++)for(let x=0;x<T;x++){const v=0xb0+n(x,y,4);px(x,y,`rgb(${v},${v+20},${v+40})`);}});
   dr(1,3,g=>{for(let y=0;y<T;y++)for(let x=0;x<T;x++){const v=0xc0+n(x,y,3);px(x,y,`rgb(${v},${v+20},${v+40})`);}});
-  dr(2,3,nt(0x2a,0x2a,0x2a,0x9a,0x9a,0x9a,0.45,14)); // 煤（更多黑色斑点）
-  dr(3,3,nt(0xd4,0xb4,0x8a,0x9a,0x9a,0x9a,0.40,15)); // 铁（更大铁锈色斑点）
-  dr(4,3,nt(0xe8,0xc8,0x30,0x9a,0x9a,0x9a,0.35,16)); // 金（更亮）
-  dr(5,3,nt(0x2a,0x4a,0x9a,0x9a,0x9a,0x9a,0.40,17)); // 青金石（更多蓝色斑点）
-  dr(6,3,nt(0x9a,0x20,0x20,0x9a,0x9a,0x9a,0.40,18)); // 红石（更红）
-  dr(7,3,nt(0x50,0xd0,0xd0,0x9a,0x9a,0x9a,0.35,19)); // 钻石（更亮蓝）
-  dr(0,4,nt(0x30,0xc0,0x50,0x9a,0x9a,0x9a,0.35,20)); // 绿宝石（更亮绿）
+  dr(2,3,nt(0x2a,0x2a,0x2a,0x9a,0x9a,0x9a,0.30,14)); // 煤（降低斑点比例）
+  dr(3,3,nt(0xd4,0xb4,0x8a,0x9a,0x9a,0x9a,0.25,15)); // 铁
+  dr(4,3,nt(0xe8,0xc8,0x30,0x9a,0x9a,0x9a,0.22,16)); // 金
+  dr(5,3,nt(0x2a,0x4a,0x9a,0x9a,0x9a,0x9a,0.25,17)); // 青金石
+  dr(6,3,nt(0x9a,0x20,0x20,0x9a,0x9a,0x9a,0.25,18)); // 红石
+  dr(7,3,nt(0x50,0xd0,0xd0,0x9a,0x9a,0x9a,0.22,19)); // 钻石
+  dr(0,4,nt(0x30,0xc0,0x50,0x9a,0x9a,0x9a,0.22,20)); // 绿宝石
   dr(1,4,g=>{for(let y=0;y<T;y++)for(let x=0;x<T;x++)px(x,y,(y%2===0?'#4a3520':'#3a2818'));});
   dr(2,4,g=>{for(let y=0;y<T;y++)for(let x=0;x<T;x++){const d=Math.hypot(x-7.5,y-7.5);px(x,y,d<6.2?'#7a5a3a':'#3a2818');}});
   dr(3,4,g=>{for(let y=0;y<T;y++)for(let x=0;x<T;x++)px(x,y,(y%2===0?'#c0b090':'#b0a080'));});
@@ -260,24 +261,30 @@ function makePlantAtlas(){
   dr(9,mp(['rgb(130,110,80)','rgb(110,90,60)','rgb(150,130,100)'],'rgb(100,80,50)',(x,y)=>{const cx=x-7.5,cy=y-7.5;if(Math.abs(cx)<2&&cy>4&&cy<10)return'leaf';return null;}));
   const tex=new THREE.CanvasTexture(cv);tex.magFilter=THREE.NearestFilter;tex.minFilter=THREE.NearestFilter;tex.generateMipmaps=false;tex.colorSpace=THREE.SRGBColorSpace;return tex;
 }
-function faceVisible(b,nb){if(nb===BK.AIR)return true;if(b===BK.GLASS)return nb!==BK.GLASS;if(b===BK.LEAVES)return true;return false;}
+function faceVisible(b,nb){if(nb===BK.AIR)return true;if(isPlant(nb))return true;if(b===BK.GLASS)return nb!==BK.GLASS;if(b===BK.LEAVES)return true;return false;}
 function buildChunkMeshes(cx,cz){
   const c=chunks.get(ck(cx,cz));if(!c)return;
   if(c.solidMesh){scene.remove(c.solidMesh);c.solidMesh.geometry.dispose();c.solidMesh=null;}
   if(c.plantMesh){scene.remove(c.plantMesh);c.plantMesh.geometry.dispose();c.plantMesh=null;}
+  if(c.glowMesh){scene.remove(c.glowMesh);c.glowMesh.geometry.dispose();c.glowMesh=null;}
   const data=c.data,ox=cx*CHUNK,oz=cz*CHUNK;
-  const sPos=[],sNrm=[],sUv=[],sCol=[],sIdx=[];let pPos=[],pIdx=[];
+  const sPos=[],sNrm=[],sUv=[],sCol=[],sIdx=[];let pPos=[],pIdx=[],gPos=[],gCol=[],gIdx=[];
   for(let y=0;y<HEIGHT;y++)for(let z=0;z<CHUNK;z++){const wz=oz+z;for(let x=0;x<CHUNK;x++){const wx=ox+x;const b=data[y*CHUNK*CHUNK+z*CHUNK+x];if(!b||b===BK.AIR)continue;const def=BLOCKS[b];
-    if(isPlant(b)){const pIdx2=def.plant;if(pIdx2===undefined)continue;const u0=pIdx2*0.1;const base=pPos.length/3;
-      pPos.push(0+x,0+y,1+z,1+x,0+y,0+z,1+x,1+y,0+z,0+x,1+y,1+z);pUv.push(u0,0,u0+0.1,0,u0+0.1,1,u0,1);pIdx.push(base,base+1,base+2,base,base+2,base+3);
-      pPos.push(0+x,0+y,0+z,1+x,0+y,1+z,1+x,1+y,1+z,0+x,1+y,0+z);pUv.push(u0,0,u0+0.1,0,u0+0.1,1,u0,1);pIdx.push(base+4,base+5,base+6,base+4,base+6,base+7);continue;}
+    if(isPlant(b)){const pIdx2=def.plant;if(pIdx2===undefined)continue;const u0=pIdx2*0.1;const base=pPos.length/3;const S=0.65,O=(1-S)/2,LO=O,H1=1-O,baseY=y+0.08;
+      pPos.push(LO+x,baseY,H1+z,H1+x,baseY,LO+z,H1+x,baseY+S,LO+z,LO+x,baseY+S,H1+z);pUv.push(u0,0,u0+0.1,0,u0+0.1,1,u0,1);pIdx.push(base,base+1,base+2,base,base+2,base+3);
+      pPos.push(LO+x,baseY,LO+z,H1+x,baseY,H1+z,H1+x,baseY+S,H1+z,LO+x,baseY+S,LO+z);pUv.push(u0,0,u0+0.1,0,u0+0.1,1,u0,1);pIdx.push(base+4,base+5,base+6,base+4,base+6,base+7);
+      pPos.push(H1+x,baseY,LO+z,LO+x,baseY,LO+z,LO+x,baseY+S,LO+z,H1+x,baseY+S,H1+z);pUv.push(u0,0,u0+0.1,0,u0+0.1,1,u0,1);pIdx.push(base+8,base+9,base+10,base+8,base+10,base+11);
+      pPos.push(H1+x,baseY,H1+z,LO+x,baseY,H1+z,LO+x,baseY+S,H1+z,H1+x,baseY+S,LO+z);pUv.push(u0,0,u0+0.1,0,u0+0.1,1,u0,1);pIdx.push(base+12,base+13,base+14,base+12,base+14,base+15);continue;}
     for(const face of FACES){const nb=worldGet(wx+face.dir[0],y+face.dir[1],wz+face.dir[2]);if(!faceVisible(b,nb))continue;
       const ny=face.n[1];const tile=ny===1?def.top:ny===-1?def.bottom:def.side;const col=tile%ATLAS_COLS,row=Math.floor(tile/ATLAS_COLS);
       const u0=col*(1/ATLAS_COLS)+UV_INSET,v0=1-(row+1)*(1/ATLAS_ROWS)+UV_INSET;const s=(1/ATLAS_COLS)-UV_INSET*2,t=(1/ATLAS_ROWS)-UV_INSET*2;const bright=FACE_BRIGHTNESS[face.n.join(',')]??0.8;const base=sPos.length/3;
       for(let k=0;k<4;k++){sPos.push(face.v[k][0]+x,face.v[k][1]+y,face.v[k][2]+z);sNrm.push(face.n[0],face.n[1],face.n[2]);sUv.push(u0+face.uv[k][0]*s,v0+face.uv[k][1]*t);sCol.push(bright,bright,bright);}
-      sIdx.push(base,base+1,base+2,base,base+2,base+3);}}}
+      sIdx.push(base,base+1,base+2,base,base+2,base+3);
+      // 发光矿石：添加发光面片
+      if(def.glow){const gb=gPos.length/3;const gc=def.glow;const gr=(gc>>16)&0xff,gg=(gc>>8)&0xff,gb2=gc&0xff;for(let k=0;k<4;k++){gPos.push(face.v[k][0]+x,face.v[k][1]+y,face.v[k][2]+z);gCol.push(gr/255,gg/255,gb2/255);}gIdx.push(gb,gb+1,gb+2,gb,gb+2,gb+3);}}}}
   if(sPos.length>0){const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(sPos,3));geo.setAttribute('normal',new THREE.Float32BufferAttribute(sNrm,3));geo.setAttribute('uv',new THREE.Float32BufferAttribute(sUv,2));geo.setAttribute('color',new THREE.Float32BufferAttribute(sCol,3));geo.setIndex(sIdx);const mesh=new THREE.Mesh(geo,solidMaterial);mesh.position.set(ox,0,oz);scene.add(mesh);c.solidMesh=mesh;}
   if(pPos.length>0){const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pPos,3));geo.setAttribute('uv',new THREE.Float32BufferAttribute(pUv,2));geo.setIndex(pIdx);const mesh=new THREE.Mesh(geo,plantMaterial);mesh.position.set(ox,0,oz);mesh.renderOrder=1;scene.add(mesh);c.plantMesh=mesh;}
+  if(gPos.length>0){const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(gPos,3));geo.setAttribute('color',new THREE.Float32BufferAttribute(gCol,3));geo.setIndex(gIdx);const mesh=new THREE.Mesh(geo,glowMaterial);mesh.position.set(ox,0,oz);mesh.renderOrder=2;scene.add(mesh);c.glowMesh=mesh;}
 }
 function rebuildAround(x,y,z){const cx=x>>4,cz=z>>4;buildChunkMeshes(cx,cz);if((x&15)===0)buildChunkMeshes(cx-1,cz);if((x&15)===15)buildChunkMeshes(cx+1,cz);if((z&15)===0)buildChunkMeshes(cx,cz-1);if((z&15)===15)buildChunkMeshes(cx,cz+1);}
 function setBlock(x,y,z,id,persist=true){if(!inWorld(x,y,z))return;const old=worldGet(x,y,z);if(old===id)return;writeBlock(x,y,z,id);if(persist){edits.set(`${x},${y},${z}`,id);scheduleSave();}rebuildAround(x,y,z);}
@@ -298,8 +305,8 @@ let sunLight,ambient,sunMesh,moonMesh,stars,clouds,cloudTex;const skyColor=new T
 function buildSky(){
   sunLight=new THREE.DirectionalLight(0xffffff,0.9);scene.add(sunLight);ambient=new THREE.AmbientLight(0xffffff,0.55);scene.add(ambient);
   const orb=(color)=>{const cv=document.createElement('canvas');cv.width=cv.height=128;const g=cv.getContext('2d');const grad=g.createRadialGradient(64,64,4,64,64,64);grad.addColorStop(0,color);grad.addColorStop(0.55,color.replace('1)','0.55)'));grad.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=grad;g.fillRect(0,0,128,128);const t=new THREE.CanvasTexture(cv);t.colorSpace=THREE.SRGBColorSpace;return t;};
-  sunMesh=new THREE.Mesh(new THREE.BoxGeometry(4,4,4),new THREE.MeshBasicMaterial({color:0xfff4a0,fog:false}));
-  moonMesh=new THREE.Mesh(new THREE.BoxGeometry(3,3,3),new THREE.MeshBasicMaterial({color:0xd0d8f0,fog:false}));
+  sunMesh=new THREE.Mesh(new THREE.BoxGeometry(20,20,20),new THREE.MeshBasicMaterial({color:0xfff4a0,fog:false}));
+  moonMesh=new THREE.Mesh(new THREE.BoxGeometry(16,16,16),new THREE.MeshBasicMaterial({color:0xd0d8f0,fog:false}));
   scene.add(sunMesh,moonMesh);
   const starPos=[];for(let i=0;i<1400;i++){const a=Math.random()*Math.PI*2,e=Math.random()*Math.PI*0.48;starPos.push(Math.cos(a)*Math.cos(e)*480,Math.sin(e)*480,Math.sin(a)*Math.cos(e)*480);}
   const starGeo=new THREE.BufferGeometry();starGeo.setAttribute('position',new THREE.Float32BufferAttribute(starPos,3));
@@ -374,7 +381,7 @@ function updatePlayer(dt){
   moveAxis('x',player.vx*dt);moveAxis('z',player.vz*dt);moveAxis('y',player.vy*dt);
   if(player.onGround&&Math.hypot(player.vx,player.vz)>2.5){stepAcc+=dt;if(stepAcc>0.42){stepAcc=0;sfx.step();}}
   if(player.y<-20)spawnPlayer();
-  camera.position.set(player.x,player.y+player.eye,player.z);camera.rotation.order='YXZ';camera.rotation.y=yaw;camera.rotation.x=pitch;
+  camera.position.set(player.x,player.y+player.eye-(sneak&&!flying?0.45:0),player.z);camera.rotation.order='YXZ';camera.rotation.y=yaw;camera.rotation.x=pitch;
 }
 /* ===== 射线 ===== */
 let target=null;
@@ -431,7 +438,7 @@ function buildInventoryUI(){
       const g=cv.getContext('2d');g.imageSmoothingEnabled=false;
       if(def.plant!==undefined)g.drawImage(plantAtlasTex.image,def.plant*16,0,16,16,0,0,32,32);
       else{const tile=def.icon;const col=tile%ATLAS_COLS,row=Math.floor(tile/ATLAS_COLS);g.drawImage(atlasTex.image,col*16,row*16,16,16,0,0,32,32);}
-      slot.addEventListener('click',()=>{HOTBAR[selected]=id;rebuildHotbar();renderInvHotbar();sfx.click();});
+      slot.addEventListener('click',()=>{HOTBAR[selected]=id;rebuildHotbar();renderInvHotbar();document.getElementById('beside').textContent=BLOCKS[id].name;sfx.click();});
       grid.appendChild(slot);
     });
   }
@@ -509,7 +516,8 @@ function init(){
   scene=new THREE.Scene();scene.fog=new THREE.Fog(0x87b8e8,45,230);camera=new THREE.PerspectiveCamera(75,window.innerWidth/window.innerHeight,0.1,1200);
   atlasTex=makeAtlas();plantAtlasTex=makePlantAtlas();
   solidMaterial=new THREE.MeshLambertMaterial({map:atlasTex,vertexColors:true});
-  plantMaterial=new THREE.MeshBasicMaterial({map:plantAtlasTex,transparent:true,alphaTest:0.15,depthWrite:true});
+  plantMaterial=new THREE.MeshBasicMaterial({map:plantAtlasTex,transparent:true,alphaTest:0.15,depthWrite:true,depthTest:true,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1});
+  glowMaterial=new THREE.MeshBasicMaterial({vertexColors:true,transparent:true,opacity:0.45,blending:THREE.AdditiveBlending,depthWrite:false});
   buildSky();buildParticles();window.__mc_ready=true;
   // 先加载初始区块，再生成玩家
   const pcx=0,pcz=0;
