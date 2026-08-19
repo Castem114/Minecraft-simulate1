@@ -9,12 +9,14 @@ import * as THREE from 'three';
 /* ============================== 常量 ============================== */
 const CHUNK       = 16;
 const HEIGHT      = 48;
+const SEA_LEVEL   = 13;      // 海平面
+const LAVA_DEPTH  = 8;       // 岩浆湖深度上限
 const RENDER_DIST = 8;
 const REACH       = 6.0;
 const EPS         = 1e-3;
 const UV_INSET    = 0.004;
 const ATLAS_COLS  = 8;
-const ATLAS_ROWS  = 6;
+const ATLAS_ROWS  = 8;
 const TILE_SZ     = 16;
 const MAX_CHUNK_LOAD_PER_FRAME = 4;
 const MAX_CHUNK_UNLOAD_PER_FRAME = 8;
@@ -31,6 +33,7 @@ const BK = {
   OAK_SAPLING: 40, SPRUCE_SAPLING: 41, BIRCH_SAPLING: 42,
   DANDELION: 43, POPPY: 44, TALL_GRASS: 45, FERN: 46,
   BROWN_MUSHROOM: 47, RED_MUSHROOM: 48, DEAD_BUSH: 49,
+  WATER: 50, LAVA: 51,
 };
 const T = {
   GRASS_TOP: 0, GRASS_SIDE: 1, DIRT: 2, STONE: 3, SAND: 4, LOG_SIDE: 5, LOG_TOP: 6,
@@ -42,6 +45,7 @@ const T = {
   JUNGLE_LOG_SIDE: 37, JUNGLE_LOG_TOP: 38, ACACIA_LOG_SIDE: 39, ACACIA_LOG_TOP: 40,
   DARK_OAK_LOG_SIDE: 41, DARK_OAK_LOG_TOP: 42,
   SPRUCE_PLANKS: 43, BIRCH_PLANKS: 44, JUNGLE_PLANKS: 45, ACACIA_PLANKS: 46, DARK_OAK_PLANKS: 47,
+  WATER_TILE: 48, LAVA_TILE: 49,
 };
 const BD = (def) => def;
 const BLOCKS = {
@@ -94,6 +98,8 @@ const BLOCKS = {
   [BK.BROWN_MUSHROOM]:  BD({ name: '棕色蘑菇',   plant: 7, color: 0x8a6a50, creative: true }),
   [BK.RED_MUSHROOM]:    BD({ name: '红色蘑菇',   plant: 8, color: 0xcc4040, creative: true }),
   [BK.DEAD_BUSH]:       BD({ name: '枯死灌木',   plant: 9, color: 0x7a6a4a, creative: true }),
+  [BK.WATER]: BD({ name: '水', top: T.WATER_TILE, side: T.WATER_TILE, bottom: T.WATER_TILE, solid: false, icon: T.WATER_TILE, color: 0x3060c0, creative: false, fluid: true }),
+  [BK.LAVA]:  BD({ name: '岩浆', top: T.LAVA_TILE, side: T.LAVA_TILE, bottom: T.LAVA_TILE, solid: false, icon: T.LAVA_TILE, color: 0xe04020, creative: false, fluid: true, glow: 0xff4400 }),
 };
 function isPlant(id) { const d = BLOCKS[id]; return d && d.plant !== undefined; }
 function isSolid(id) { const d = BLOCKS[id]; return d && d.solid === true; }
@@ -115,8 +121,8 @@ const smooth=t=>t*t*(3-2*t);
 function valueNoise(x,z){const xi=Math.floor(x),zi=Math.floor(z);const xf=smooth(x-xi),zf=smooth(z-zi);const a=hash2(xi,zi),b=hash2(xi+1,zi),c=hash2(xi,zi+1),d=hash2(xi+1,zi+1);return a+(b-a)*xf+(c-a)*zf+(a-b-c+d)*xf*zf;}
 function fbm(x,z,oct=4){let v=0,amp=0.5,f=1;for(let i=0;i<oct;i++){v+=valueNoise(x*f,z*f)*amp;amp*=0.5;f*=2;}return Math.min(1,Math.max(0,v*1.15));}
 function valueNoise3(x,y,z){const xi=Math.floor(x),yi=Math.floor(y),zi=Math.floor(z);const xf=smooth(x-xi),yf=smooth(y-yi),zf=smooth(z-zi);const c000=hash3(xi,yi,zi),c100=hash3(xi+1,yi,zi),c010=hash3(xi,yi+1,zi),c110=hash3(xi+1,yi+1,zi),c001=hash3(xi,yi,zi+1),c101=hash3(xi+1,yi,zi+1),c011=hash3(xi,yi+1,zi+1),c111=hash3(xi+1,yi+1,zi+1);const l=(a,b,t)=>a+(b-a)*t;return l(l(l(c000,c100,xf),l(c010,c110,xf),yf),l(l(c001,c101,xf),l(c011,c111,xf),yf),zf);}
-function biomeTemp(x,z){const bx=Math.floor(x/32),bz=Math.floor(z/32);return hash2(bx*31,bz*37);}
-function biomeHumid(x,z){const bx=Math.floor(x/24),bz=Math.floor(z/24);return hash2(bx*13,bz*17);}
+function biomeTemp(x,z){return valueNoise(x*0.022,z*0.022);}
+function biomeHumid(x,z){return valueNoise(x*0.025,z*0.025);}
 /* ===== 区块系统 ===== */
 const chunks=new Map();
 const MAX_WORLD_RADIUS=32;
@@ -133,15 +139,22 @@ function generateChunkData(cx,cz){
   const heights=new Int16Array(CHUNK*CHUNK);
   for(let lz=0;lz<CHUNK;lz++){const wz=oz+lz;for(let lx=0;lx<CHUNK;lx++)heights[lz*CHUNK+lx]=heightAt(ox+lx,wz);}
   for(let lz=0;lz<CHUNK;lz++){const wz=oz+lz;
-    for(let lx=0;lx<CHUNK;lx++){const wx=ox+lx;const h=heights[lz*CHUNK+lx];const temp=biomeTemp(wx,wz);const humid=biomeHumid(wx,wz);
-      const cold=temp<0.33,hot=temp>0.66,wet=humid>0.66,nearBeach=h<=13,snowy=h>=38;
+    for(let lx=0;lx<CHUNK;lx++){const wx=ox+lx;let h=heights[lz*CHUNK+lx];const temp=biomeTemp(wx,wz);const humid=biomeHumid(wx,wz);
+      // 河流雕琢：噪声产生蜿蜒河道
+      const river=fbm(wx*0.006+500,wz*0.006+500,3);
+      if(river>0.68){const depth=(river-0.68)*24;h=Math.max(SEA_LEVEL-3,h-depth);}
+      const cold=temp<0.33,hot=temp>0.66,wet=humid>0.66,nearBeach=h<=SEA_LEVEL+1,snowy=h>=38;
       for(let y=0;y<=h;y++){let id=BK.STONE;if(y===0)id=BK.BEDROCK;else if(y===h){if(nearBeach)id=BK.SAND;else if(snowy)id=BK.SNOW;else if(hot&&wet)id=BK.RED_SAND;else if(cold&&wet)id=BK.PODZOL;else if(cold)id=BK.SNOW;else id=BK.GRASS;}else if(y>=h-2)id=BK.DIRT;else id=BK.STONE;
         if(y>2&&y<h-2&&valueNoise3(wx*0.085,y*0.14,wz*0.085)>0.76)id=BK.AIR;
+        // 岩浆湖：地下深处噪声挖空
+        if(y<=LAVA_DEPTH&&id===BK.STONE&&valueNoise3(wx*0.08,y*0.2,wz*0.08)>0.72)id=BK.LAVA;
         if(id===BK.STONE&&y>3&&y<h-1){const r=hash3(wx,y,wz);if(r<0.04)id=BK.GRANITE;else if(r<0.08)id=BK.DIORITE;else if(r<0.12)id=BK.ANDESITE;}
         if((id===BK.STONE||id===BK.GRANITE||id===BK.DIORITE||id===BK.ANDESITE)){const r=hash3(wx*7,y*13,wz*11);if(y<15&&r<0.008)id=BK.DIAMOND_ORE;else if(y<32&&r<0.015)id=BK.GOLD_ORE;else if(y<48&&r<0.025)id=BK.IRON_ORE;else if(y<48&&r<0.030)id=BK.COAL_ORE;else if(y<25&&r<0.012)id=BK.LAPIS_ORE;else if(y<18&&r<0.008)id=BK.EMERALD_ORE;else if(y<48&&r<0.022)id=BK.REDSTONE_ORE;}
         if(y===h&&id===BK.SAND&&nearBeach&&hash3(wx,0,wz)<0.15)id=BK.CLAY;
         if(id!==BK.AIR)data[y*CHUNK*CHUNK+lz*CHUNK+lx]=id;
       }
+      // 海水填充：低于海平面且非实体的位置填水
+      if(h+1<HEIGHT&&h>2){for(let wy=h+1;wy<=SEA_LEVEL;wy++){if(data[wy*CHUNK*CHUNK+lz*CHUNK+lx]===0)data[wy*CHUNK*CHUNK+lz*CHUNK+lx]=BK.WATER;}}
       // 地表植物
       if(h+1<HEIGHT&&h>2){const topId=data[h*CHUNK*CHUNK+lz*CHUNK+lx];
         if(topId===BK.GRASS){const r=hash3(wx,h+1,wz);if(r<0.020)treeGen(data,wx,h,wz,cx,cz,temp,humid);else if(r<0.055){const fr=hash3(wx,h+2,wz);data[(h+1)*CHUNK*CHUNK+lz*CHUNK+lx]=fr<0.25?BK.DANDELION:fr<0.45?BK.POPPY:fr<0.70?BK.TALL_GRASS:BK.FERN;}}
@@ -206,7 +219,7 @@ function makeAtlas(){
   dr(0,1,g=>{for(let y=0;y<T;y++)for(let x=0;x<T;x++)px(x,y,(y%8===0||y%8===7)?'#8a6740':(hash2(x*3,y)<0.5?'#b48a4f':'#a87f47'));});
   dr(1,1,g=>{for(let y=0;y<T;y++)for(let x=0;x<T;x++){const blob=hash2(Math.floor(x/3)*7,Math.floor(y/3)*5);const v=0x66+blob*60;px(x,y,`rgb(${v},${v},${Math.min(255,v+4)})`);}});
   dr(2,1,g=>{for(let y=0;y<T;y++)for(let x=0;x<T;x++){const row=y>>2;const off=(row&1)*4;px(x,y,(y%4===3||(x+off)%8===7)?'#b0a290':'#a55a55');}});
-  dr(3,1,g=>{g.fillStyle='rgba(176,219,240,0.95)';g.fillRect(0,0,T,T);g.fillStyle='#e8f6ff';g.fillRect(0,0,T,1);g.fillRect(0,0,1,T);g.fillRect(0,T-1,T,1);g.fillRect(T-1,0,1,T);g.fillRect(7,7,2,2);});
+  dr(3,1,g=>{g.clearRect(0,0,T,T);for(let y=0;y<T;y++)for(let x=0;x<T;x++){const h=hash2(x*5,y*7);if(h<0.15)g.fillStyle='rgba(255,255,255,0.8)';else if(h<0.85)g.fillStyle='rgba(180,220,248,0.25)';else g.fillStyle='rgba(200,235,255,0.6)';g.fillRect(x,y,1,1);}});
   dr(4,1,g=>{for(let y=0;y<T;y++)for(let x=0;x<T;x++){const v=0xf2+n(x,y,6);px(x,y,`rgb(${v},${v},${v})`);}});
   dr(5,1,g=>{for(let y=0;y<T;y++)for(let x=0;x<T;x++){const v=0x66+n(x,y,6);px(x,y,`rgb(${v},${v-8},${v-12})`);}});
   dr(6,1,g=>{for(let y=0;y<T;y++)for(let x=0;x<T;x++){const v=0x24+n(x,y,8);px(x,y,`rgb(${v},${v},${v})`);}});
@@ -244,6 +257,8 @@ function makeAtlas(){
   dr(5,5,g=>{for(let y=0;y<T;y++)for(let x=0;x<T;x++)px(x,y,(y%8===0||y%8===7)?'#7a5a3a':(hash2(x*3,y)<0.5?'#9a7a50':'#8a6a40'));});
   dr(6,5,g=>{for(let y=0;y<T;y++)for(let x=0;x<T;x++)px(x,y,(y%8===0||y%8===7)?'#8a6a40':(hash2(x*3,y)<0.5?'#b08050':'#a07040'));});
   dr(7,5,g=>{for(let y=0;y<T;y++)for(let x=0;x<T;x++)px(x,y,(y%8===0||y%8===7)?'#2a1a10':(hash2(x*3,y)<0.5?'#3a2a1a':'#2a1a0e'));});
+  dr(0,6,g=>{for(let y=0;y<T;y++)for(let x=0;x<T;x++){const h=hash2(x*7,y*9);g.fillStyle=h<0.92?'rgba(40,80,200,0.55)':'rgba(100,160,255,0.7)';g.fillRect(x,y,1,1);}}); // 水
+  dr(1,6,g=>{for(let y=0;y<T;y++)for(let x=0;x<T;x++){const v=0xcc+Math.floor(hash2(x*5,y*5)*30);g.fillStyle=`rgb(${v},${Math.max(0,v-80)},${Math.max(0,v-100)})`;g.fillRect(x,y,1,1);}}); // 岩浆
   const tex=new THREE.CanvasTexture(cv);tex.magFilter=THREE.NearestFilter;tex.minFilter=THREE.NearestFilter;tex.generateMipmaps=false;tex.colorSpace=THREE.SRGBColorSpace;tex.wrapS=tex.wrapT=THREE.ClampToEdgeWrapping;return tex;
 }
 function makePlantAtlas(){
@@ -261,7 +276,8 @@ function makePlantAtlas(){
   dr(9,mp(['rgb(130,110,80)','rgb(110,90,60)','rgb(150,130,100)'],'rgb(100,80,50)',(x,y)=>{const cx=x-7.5,cy=y-7.5;if(Math.abs(cx)<2&&cy>4&&cy<10)return'leaf';return null;}));
   const tex=new THREE.CanvasTexture(cv);tex.magFilter=THREE.NearestFilter;tex.minFilter=THREE.NearestFilter;tex.generateMipmaps=false;tex.colorSpace=THREE.SRGBColorSpace;return tex;
 }
-function faceVisible(b,nb){if(nb===BK.AIR)return true;if(isPlant(nb))return true;if(b===BK.GLASS)return nb!==BK.GLASS;if(b===BK.LEAVES)return true;return false;}
+function isFluid(id){const d=BLOCKS[id];return d&&d.fluid===true;}
+function faceVisible(b,nb){if(nb===BK.AIR)return true;if(isPlant(nb))return true;if(isFluid(b))return nb!==b;if(b===BK.GLASS)return nb!==BK.GLASS;if(b===BK.LEAVES)return true;return false;}
 function buildChunkMeshes(cx,cz){
   const c=chunks.get(ck(cx,cz));if(!c)return;
   if(c.solidMesh){scene.remove(c.solidMesh);c.solidMesh.geometry.dispose();c.solidMesh=null;}
@@ -270,11 +286,11 @@ function buildChunkMeshes(cx,cz){
   const data=c.data,ox=cx*CHUNK,oz=cz*CHUNK;
   const sPos=[],sNrm=[],sUv=[],sCol=[],sIdx=[];let pPos=[],pIdx=[],gPos=[],gCol=[],gIdx=[];
   for(let y=0;y<HEIGHT;y++)for(let z=0;z<CHUNK;z++){const wz=oz+z;for(let x=0;x<CHUNK;x++){const wx=ox+x;const b=data[y*CHUNK*CHUNK+z*CHUNK+x];if(!b||b===BK.AIR)continue;const def=BLOCKS[b];
-    if(isPlant(b)){const pIdx2=def.plant;if(pIdx2===undefined)continue;const u0=pIdx2*0.1;const base=pPos.length/3;const S=0.65,O=(1-S)/2,LO=O,H1=1-O,baseY=y+0.08;
-      pPos.push(LO+x,baseY,H1+z,H1+x,baseY,LO+z,H1+x,baseY+S,LO+z,LO+x,baseY+S,H1+z);pUv.push(u0,0,u0+0.1,0,u0+0.1,1,u0,1);pIdx.push(base,base+1,base+2,base,base+2,base+3);
-      pPos.push(LO+x,baseY,LO+z,H1+x,baseY,H1+z,H1+x,baseY+S,H1+z,LO+x,baseY+S,LO+z);pUv.push(u0,0,u0+0.1,0,u0+0.1,1,u0,1);pIdx.push(base+4,base+5,base+6,base+4,base+6,base+7);
-      pPos.push(H1+x,baseY,LO+z,LO+x,baseY,LO+z,LO+x,baseY+S,LO+z,H1+x,baseY+S,H1+z);pUv.push(u0,0,u0+0.1,0,u0+0.1,1,u0,1);pIdx.push(base+8,base+9,base+10,base+8,base+10,base+11);
-      pPos.push(H1+x,baseY,H1+z,LO+x,baseY,H1+z,LO+x,baseY+S,H1+z,H1+x,baseY+S,LO+z);pUv.push(u0,0,u0+0.1,0,u0+0.1,1,u0,1);pIdx.push(base+12,base+13,base+14,base+12,base+14,base+15);continue;}
+    if(isPlant(b)){const pIdx2=def.plant;if(pIdx2===undefined)continue;const u0=pIdx2*0.1;const base=pPos.length/3;const baseY=y+0.02;
+      pPos.push(0+x,baseY,1+z,1+x,baseY,0+z,1+x,baseY+1,0+z,0+x,baseY+1,1+z);pUv.push(u0,0,u0+0.1,0,u0+0.1,1,u0,1);pIdx.push(base,base+1,base+2,base,base+2,base+3);
+      pPos.push(0+x,baseY,0+z,1+x,baseY,1+z,1+x,baseY+1,1+z,0+x,baseY+1,0+z);pUv.push(u0,0,u0+0.1,0,u0+0.1,1,u0,1);pIdx.push(base+4,base+5,base+6,base+4,base+6,base+7);
+      pPos.push(1+x,baseY,0+z,0+x,baseY,0+z,0+x,baseY+1,0+z,1+x,baseY+1,1+z);pUv.push(u0,0,u0+0.1,0,u0+0.1,1,u0,1);pIdx.push(base+8,base+9,base+10,base+8,base+10,base+11);
+      pPos.push(1+x,baseY,1+z,0+x,baseY,1+z,0+x,baseY+1,1+z,1+x,baseY+1,0+z);pUv.push(u0,0,u0+0.1,0,u0+0.1,1,u0,1);pIdx.push(base+12,base+13,base+14,base+12,base+14,base+15);continue;}
     for(const face of FACES){const nb=worldGet(wx+face.dir[0],y+face.dir[1],wz+face.dir[2]);if(!faceVisible(b,nb))continue;
       const ny=face.n[1];const tile=ny===1?def.top:ny===-1?def.bottom:def.side;const col=tile%ATLAS_COLS,row=Math.floor(tile/ATLAS_COLS);
       const u0=col*(1/ATLAS_COLS)+UV_INSET,v0=1-(row+1)*(1/ATLAS_ROWS)+UV_INSET;const s=(1/ATLAS_COLS)-UV_INSET*2,t=(1/ATLAS_ROWS)-UV_INSET*2;const bright=FACE_BRIGHTNESS[face.n.join(',')]??0.8;const base=sPos.length/3;
@@ -287,7 +303,43 @@ function buildChunkMeshes(cx,cz){
   if(gPos.length>0){const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(gPos,3));geo.setAttribute('color',new THREE.Float32BufferAttribute(gCol,3));geo.setIndex(gIdx);const mesh=new THREE.Mesh(geo,glowMaterial);mesh.position.set(ox,0,oz);mesh.renderOrder=2;scene.add(mesh);c.glowMesh=mesh;}
 }
 function rebuildAround(x,y,z){const cx=x>>4,cz=z>>4;buildChunkMeshes(cx,cz);if((x&15)===0)buildChunkMeshes(cx-1,cz);if((x&15)===15)buildChunkMeshes(cx+1,cz);if((z&15)===0)buildChunkMeshes(cx,cz-1);if((z&15)===15)buildChunkMeshes(cx,cz+1);}
-function setBlock(x,y,z,id,persist=true){if(!inWorld(x,y,z))return;const old=worldGet(x,y,z);if(old===id)return;writeBlock(x,y,z,id);if(persist){edits.set(`${x},${y},${z}`,id);scheduleSave();}rebuildAround(x,y,z);}
+// 沙子下落：记录需要下落的沙块
+const fallingSands=new Set();
+function checkSandFall(x,y,z){
+  if(!inWorld(x,y,z))return;
+  const b=worldGet(x,y,z);
+  if(b!==BK.SAND&&b!==BK.RED_SAND)return;
+  const below=worldGet(x,y-1,z);
+  if(below===BK.AIR||isFluid(below)){fallingSands.add(`${x},${y},${z}`);}
+}
+function updateFallingSands(maxSteps=120){
+  if(fallingSands.size===0)return;
+  const keys=[...fallingSands];
+  let moved=0;
+  for(const key of keys){
+    if(moved>=maxSteps)break;
+    const[x,y,z]=key.split(',').map(Number);
+    const b=worldGet(x,y,z);
+    if(b!==BK.SAND&&b!==BK.RED_SAND){fallingSands.delete(key);continue;}
+    const below=worldGet(x,y-1,z);
+    if(below!==BK.AIR&&!isFluid(below)){fallingSands.delete(key);continue;}
+    // 下落一格
+    writeBlock(x,y,z,BK.AIR);
+    writeBlock(x,y-1,z,b);
+    rebuildAround(x,y,z);
+    // 上方的沙也加入下落队列
+    checkSandFall(x,y+1,z);
+    checkSandFall(x,y-1,z);
+    fallingSands.delete(key);
+    moved++;
+  }
+}
+function setBlock(x,y,z,id,persist=true){if(!inWorld(x,y,z))return;const old=worldGet(x,y,z);if(old===id)return;writeBlock(x,y,z,id);if(persist){edits.set(`${x},${y},${z}`,id);scheduleSave();}rebuildAround(x,y,z);
+  // 沙子下落检查：放置的沙块或沙块下方的支撑被移除
+  if(id===BK.SAND||id===BK.RED_SAND)checkSandFall(x,y,z);
+  else if(old===BK.SAND||old===BK.RED_SAND){checkSandFall(x,y,z);}
+  checkSandFall(x,y+1,z); // 上方若有沙也检查
+}
 /* ===== 存储 ===== */
 const SAVE_KEY='mcclone_world_v1',PLAYER_KEY='mcclone_player_v1';let saveTimer=null;
 function scheduleSave(){clearTimeout(saveTimer);saveTimer=setTimeout(saveNow,400);}
@@ -360,11 +412,11 @@ function moveAxis(axis,amount){
   if(axis==='x'){
     const np=player.x+amount;
     // 潜行时检测边缘：若下一步脚下的方块是空气则禁止移动
-    if(sneak&&!flying&&player.onGround){const edgeX=amount>0?Math.floor(np+player.w+0.01):Math.floor(np-player.w-0.01);if(!solidAt(edgeX,Math.floor(player.y)-1,Math.floor(player.z))){player.vx=0;return;}}
+    if(sneak&&!flying&&player.onGround){const edgeX=amount>0?Math.floor(np+0.001):Math.floor(np-0.001);if(!solidAt(edgeX,Math.floor(player.y)-1,Math.floor(player.z))){player.vx=0;return;}}
     if(collides(np,player.y,player.z)){if(amount>0)player.x=Math.floor(np+player.w)-player.w-EPS;else player.x=Math.floor(np-player.w)+1+player.w+EPS;player.vx=0;}else player.x=np;
   }else if(axis==='z'){
     const np=player.z+amount;
-    if(sneak&&!flying&&player.onGround){const edgeZ=amount>0?Math.floor(np+player.w+0.01):Math.floor(np-player.w-0.01);if(!solidAt(Math.floor(player.x),Math.floor(player.y)-1,edgeZ)){player.vz=0;return;}}
+    if(sneak&&!flying&&player.onGround){const edgeZ=amount>0?Math.floor(np+0.001):Math.floor(np-0.001);if(!solidAt(Math.floor(player.x),Math.floor(player.y)-1,edgeZ)){player.vz=0;return;}}
     if(collides(player.x,player.y,np)){if(amount>0)player.z=Math.floor(np+player.w)-player.w-EPS;else player.z=Math.floor(np-player.w)+1+player.w+EPS;player.vz=0;}else player.z=np;
   }else{
     const np=player.y+amount;
@@ -381,7 +433,7 @@ function updatePlayer(dt){
   moveAxis('x',player.vx*dt);moveAxis('z',player.vz*dt);moveAxis('y',player.vy*dt);
   if(player.onGround&&Math.hypot(player.vx,player.vz)>2.5){stepAcc+=dt;if(stepAcc>0.42){stepAcc=0;sfx.step();}}
   if(player.y<-20)spawnPlayer();
-  camera.position.set(player.x,player.y+player.eye-(sneak&&!flying?0.45:0),player.z);camera.rotation.order='YXZ';camera.rotation.y=yaw;camera.rotation.x=pitch;
+  camera.position.set(player.x,player.y+player.eye-(sneak&&!flying?0.3:0),player.z);camera.rotation.order='YXZ';camera.rotation.y=yaw;camera.rotation.x=pitch;
 }
 /* ===== 射线 ===== */
 let target=null;
@@ -515,7 +567,7 @@ function init(){
   renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));renderer.setSize(window.innerWidth,window.innerHeight);
   scene=new THREE.Scene();scene.fog=new THREE.Fog(0x87b8e8,45,230);camera=new THREE.PerspectiveCamera(75,window.innerWidth/window.innerHeight,0.1,1200);
   atlasTex=makeAtlas();plantAtlasTex=makePlantAtlas();
-  solidMaterial=new THREE.MeshLambertMaterial({map:atlasTex,vertexColors:true});
+  solidMaterial=new THREE.MeshLambertMaterial({map:atlasTex,vertexColors:true,alphaTest:0.15});
   plantMaterial=new THREE.MeshBasicMaterial({map:plantAtlasTex,transparent:true,alphaTest:0.15,depthWrite:true,depthTest:true,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1});
   glowMaterial=new THREE.MeshBasicMaterial({vertexColors:true,transparent:true,opacity:0.45,blending:THREE.AdditiveBlending,depthWrite:false});
   buildSky();buildParticles();window.__mc_ready=true;
@@ -533,6 +585,7 @@ function animate(){
   if(ready)updateChunks();
   // 网格化队列
   if(meshQueue.length>0){for(let i=0;i<3&&meshQueue.length>0;i++){const[cx,cz]=meshQueue.shift();buildChunkMeshes(cx,cz);}meshQueueSet.clear();}
+  if(ready)updateFallingSands(60);
   if(locked&&!inventoryOpen){updatePlayer(dt);interact(performance.now()/1000);updateHUD(dt);if(ready)maybeSavePlayer(performance.now());}else{highlight.visible=false;ghost.visible=false;}
   updateSky(dt);updateParticles(dt);renderer.render(scene,camera);
 }
