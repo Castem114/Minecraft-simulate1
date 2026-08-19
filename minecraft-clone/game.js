@@ -143,10 +143,10 @@ function generateChunkData(cx,cz){
         if(id!==BK.AIR)data[y*CHUNK*CHUNK+lz*CHUNK+lx]=id;
       }
       // 地表植物
-      if(h<HEIGHT-2&&h>2){const topId=data[h*CHUNK*CHUNK+lz*CHUNK+lx];
-        if(topId===BK.GRASS){const r=hash3(wx,h+1,wz);if(r<0.020)treeGen(data,wx,h,wz,cx,cz,temp,humid);else if(r<0.055){const fr=hash3(wx,h+2,wz);data[h*CHUNK*CHUNK+lz*CHUNK+lx]=fr<0.25?BK.DANDELION:fr<0.45?BK.POPPY:fr<0.70?BK.TALL_GRASS:BK.FERN;}}
-        else if(topId===BK.PODZOL&&hash3(wx,h+1,wz)<0.10)data[h*CHUNK*CHUNK+lz*CHUNK+lx]=BK.FERN;
-        else if(topId===BK.SNOW&&h>10&&hash3(wx,h+1,wz)<0.04)data[h*CHUNK*CHUNK+lz*CHUNK+lx]=BK.DEAD_BUSH;
+      if(h+1<HEIGHT&&h>2){const topId=data[h*CHUNK*CHUNK+lz*CHUNK+lx];
+        if(topId===BK.GRASS){const r=hash3(wx,h+1,wz);if(r<0.020)treeGen(data,wx,h,wz,cx,cz,temp,humid);else if(r<0.055){const fr=hash3(wx,h+2,wz);data[(h+1)*CHUNK*CHUNK+lz*CHUNK+lx]=fr<0.25?BK.DANDELION:fr<0.45?BK.POPPY:fr<0.70?BK.TALL_GRASS:BK.FERN;}}
+        else if(topId===BK.PODZOL&&hash3(wx,h+1,wz)<0.10)data[(h+1)*CHUNK*CHUNK+lz*CHUNK+lx]=BK.FERN;
+        else if(topId===BK.SNOW&&h>10&&hash3(wx,h+1,wz)<0.04)data[(h+1)*CHUNK*CHUNK+lz*CHUNK+lx]=BK.DEAD_BUSH;
       }
     }
   }
@@ -214,8 +214,9 @@ function makeAtlas(){
   dr(1,2,nt(0x8a,0x8a,0x7a,0x7a,0x7a,0x6a,0.5,12));
   dr(2,2,g=>{for(let y=0;y<T;y++)for(let x=0;x<T;x++){const h=hash2(x*7,y*7);px(x,y,h<0.4?'#a09080':h<0.7?'#9a8a7a':'#8a7a6a');}});
   dr(3,2,g=>{for(let y=0;y<T;y++)for(let x=0;x<T;x++)px(x,y,y<3?(hash2(x,y)<0.5?'#a09080':'#9a8a7a'):(hash2(x*3,y*3)<0.5?'#8b5a2b':'#7d4f25'));});
-  dr(4,2,g=>{for(let y=0;y<T;y++)for(let x=0;x<T;x++){const h=hash2(x*5,y*5);px(x,y,h<0.5?'#6b5a3a':'#5a4a2a');}});
-  dr(5,2,g=>{for(let y=0;y<T;y++)for(let x=0;x<T;x++)px(x,y,y<3?(hash2(x,y)<0.5?'#6b5a3a':'#5a4a2a'):'#8b5a2b');});
+  // #6b5a3a → #9a8a6a, #5a4a2a → #8a7a5a (调亮)
+  dr(4,2,g=>{for(let y=0;y<T;y++)for(let x=0;x<T;x++){const h=hash2(x*5,y*5);px(x,y,h<0.5?'#9a8a6a':'#8a7a5a');}});
+  dr(5,2,g=>{for(let y=0;y<T;y++)for(let x=0;x<T;x++)px(x,y,y<3?(hash2(x,y)<0.5?'#9a8a6a':'#8a7a5a'):'#8b5a2b');});
   dr(6,2,g=>{for(let y=0;y<T;y++)for(let x=0;x<T;x++){const v=0xc4+n(x,y,5);px(x,y,`rgb(${v},${v-60},${v-80})`);}});
   dr(7,2,nt(0x9a,0x9a,0x9a,0x9a,0x9a,0x9a,0.5,13));
   dr(0,3,g=>{for(let y=0;y<T;y++)for(let x=0;x<T;x++){const v=0xb0+n(x,y,4);px(x,y,`rgb(${v},${v+20},${v+40})`);}});
@@ -314,7 +315,7 @@ function updateSky(dt){if(!dayPaused)dayTime=(dayTime+dt/DAY_LEN)%1;const ang=da
   const sunPos=new THREE.Vector3(Math.cos(ang),Math.sin(ang),0.32).multiplyScalar(430),moonPos=new THREE.Vector3(-Math.cos(ang),-Math.sin(ang),-0.32).multiplyScalar(430);
   sunMesh.position.copy(sunPos);moonMesh.position.copy(moonPos);sunMesh.visible=elev>-0.15;moonMesh.visible=elev<0.15;
   sunLight.position.copy(sunPos).multiplyScalar(0.35);sunLight.color.copy(lightDay).lerp(lightNight,nightAmt*0.45);sunLight.intensity=0.12+sunAmt*0.95;ambient.intensity=0.16+sunAmt*0.42+nightAmt*0.05;
-  stars.material.opacity=nightAmt*0.95;cloudTex.offset.x+=dt*0.0035;scene.background=skyColor;scene.fog.color.copy(skyColor);}
+  stars.material.opacity=nightAmt*0.95;cloudTex.offset.x+=dt*0.0035;scene.background=skyColor;scene.fog.color.copy(skyColor);stars.position.copy(camera.position);}
 /* ===== 粒子 ===== */
 const MAX_PARTICLES=90;let particles;const pObj=[];
 function buildParticles(){
@@ -346,7 +347,23 @@ function spawnPlayer(){
   player.vx=player.vy=player.vz=0;player.onGround=false;
 }
 function collides(x,y,z){const x0=Math.floor(x-player.w),x1=Math.floor(x+player.w),y0=Math.floor(y),y1=Math.floor(y+player.h),z0=Math.floor(z-player.w),z1=Math.floor(z+player.w);for(let yy=y0;yy<=y1;yy++)for(let zz=z0;zz<=z1;zz++)for(let xx=x0;xx<=x1;xx++)if(solidAt(xx,yy,zz))return true;return false;}
-function moveAxis(axis,amount){if(!amount)return;if(axis==='x'){const np=player.x+amount;if(collides(np,player.y,player.z)){if(amount>0)player.x=Math.floor(np+player.w)-player.w-EPS;else player.x=Math.floor(np-player.w)+1+player.w+EPS;player.vx=0;}else player.x=np;}else if(axis==='z'){const np=player.z+amount;if(collides(player.x,player.y,np)){if(amount>0)player.z=Math.floor(np+player.w)-player.w-EPS;else player.z=Math.floor(np-player.w)+1+player.w+EPS;player.vz=0;}else player.z=np;}else{const np=player.y+amount;if(collides(player.x,np,player.z)){if(amount>0){player.y=Math.floor(np+player.h)-player.h-EPS;player.vy=0;}else{player.y=Math.floor(np)+1+EPS;player.vy=0;player.onGround=true;}}else{player.y=np;if(amount<0)player.onGround=false;}}}
+function moveAxis(axis,amount){
+  if(!amount)return;
+  const sneak=keys.has('ShiftLeft')||keys.has('ShiftRight');
+  if(axis==='x'){
+    const np=player.x+amount;
+    // 潜行时检测边缘：若下一步脚下的方块是空气则禁止移动
+    if(sneak&&!flying&&player.onGround){const edgeX=amount>0?Math.floor(np+player.w+0.01):Math.floor(np-player.w-0.01);if(!solidAt(edgeX,Math.floor(player.y)-1,Math.floor(player.z))){player.vx=0;return;}}
+    if(collides(np,player.y,player.z)){if(amount>0)player.x=Math.floor(np+player.w)-player.w-EPS;else player.x=Math.floor(np-player.w)+1+player.w+EPS;player.vx=0;}else player.x=np;
+  }else if(axis==='z'){
+    const np=player.z+amount;
+    if(sneak&&!flying&&player.onGround){const edgeZ=amount>0?Math.floor(np+player.w+0.01):Math.floor(np-player.w-0.01);if(!solidAt(Math.floor(player.x),Math.floor(player.y)-1,edgeZ)){player.vz=0;return;}}
+    if(collides(player.x,player.y,np)){if(amount>0)player.z=Math.floor(np+player.w)-player.w-EPS;else player.z=Math.floor(np-player.w)+1+player.w+EPS;player.vz=0;}else player.z=np;
+  }else{
+    const np=player.y+amount;
+    if(collides(player.x,np,player.z)){if(amount>0){player.y=Math.floor(np+player.h)-player.h-EPS;player.vy=0;}else{player.y=Math.floor(np)+1+EPS;player.vy=0;player.onGround=true;}}else{player.y=np;if(amount<0)player.onGround=false;}
+  }
+}
 const GRAVITY=26,JUMP=9.6,WALK=4.6;const lerp=(a,b,t)=>a+(b-a)*t;
 function updatePlayer(dt){
   if(inventoryOpen)return;
@@ -411,7 +428,7 @@ function buildInventoryUI(){
 function toggleInventory(){
   inventoryOpen=!inventoryOpen;const el=document.getElementById('inventory-overlay');
   if(el)el.style.display=inventoryOpen?'flex':'none';
-  if(inventoryOpen){mouseDown.left=mouseDown.right=false;highlight.visible=false;ghost.visible=false;}
+  if(inventoryOpen){mouseDown.left=mouseDown.right=false;highlight.visible=false;ghost.visible=false;document.exitPointerLock();}
 }
 function rebuildHotbar(){
   hotbarEl.innerHTML='';slotEls.length=0;
