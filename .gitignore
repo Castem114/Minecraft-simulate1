@@ -13,3 +13,6 @@
 # Node
 node_modules/
 npm-debug.log*
+
+# 外部参考仓库
+minecraft-clone-example/
