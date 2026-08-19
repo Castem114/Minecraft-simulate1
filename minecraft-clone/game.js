@@ -287,10 +287,9 @@ function buildChunkMeshes(cx,cz){
   const sPos=[],sNrm=[],sUv=[],sCol=[],sIdx=[];let pPos=[],pIdx=[],gPos=[],gCol=[],gIdx=[];
   for(let y=0;y<HEIGHT;y++)for(let z=0;z<CHUNK;z++){const wz=oz+z;for(let x=0;x<CHUNK;x++){const wx=ox+x;const b=data[y*CHUNK*CHUNK+z*CHUNK+x];if(!b||b===BK.AIR)continue;const def=BLOCKS[b];
     if(isPlant(b)){const pIdx2=def.plant;if(pIdx2===undefined)continue;const u0=pIdx2*0.1;const base=pPos.length/3;const baseY=y+0.02;
+      // 仅一个叉号（2 面交叉）
       pPos.push(0+x,baseY,1+z,1+x,baseY,0+z,1+x,baseY+1,0+z,0+x,baseY+1,1+z);pUv.push(u0,0,u0+0.1,0,u0+0.1,1,u0,1);pIdx.push(base,base+1,base+2,base,base+2,base+3);
-      pPos.push(0+x,baseY,0+z,1+x,baseY,1+z,1+x,baseY+1,1+z,0+x,baseY+1,0+z);pUv.push(u0,0,u0+0.1,0,u0+0.1,1,u0,1);pIdx.push(base+4,base+5,base+6,base+4,base+6,base+7);
-      pPos.push(1+x,baseY,0+z,0+x,baseY,0+z,0+x,baseY+1,0+z,1+x,baseY+1,1+z);pUv.push(u0,0,u0+0.1,0,u0+0.1,1,u0,1);pIdx.push(base+8,base+9,base+10,base+8,base+10,base+11);
-      pPos.push(1+x,baseY,1+z,0+x,baseY,1+z,0+x,baseY+1,1+z,1+x,baseY+1,0+z);pUv.push(u0,0,u0+0.1,0,u0+0.1,1,u0,1);pIdx.push(base+12,base+13,base+14,base+12,base+14,base+15);continue;}
+      pPos.push(0+x,baseY,0+z,1+x,baseY,1+z,1+x,baseY+1,1+z,0+x,baseY+1,0+z);pUv.push(u0,0,u0+0.1,0,u0+0.1,1,u0,1);pIdx.push(base+4,base+5,base+6,base+4,base+6,base+7);continue;}
     for(const face of FACES){const nb=worldGet(wx+face.dir[0],y+face.dir[1],wz+face.dir[2]);if(!faceVisible(b,nb))continue;
       const ny=face.n[1];const tile=ny===1?def.top:ny===-1?def.bottom:def.side;const col=tile%ATLAS_COLS,row=Math.floor(tile/ATLAS_COLS);
       const u0=col*(1/ATLAS_COLS)+UV_INSET,v0=1-(row+1)*(1/ATLAS_ROWS)+UV_INSET;const s=(1/ATLAS_COLS)-UV_INSET*2,t=(1/ATLAS_ROWS)-UV_INSET*2;const bright=FACE_BRIGHTNESS[face.n.join(',')]??0.8;const base=sPos.length/3;
@@ -385,7 +384,7 @@ function buildParticles(){
   particles.instanceMatrix.needsUpdate=true;
 }
 let pCursor=0;
-function spawnParticles(x,y,z,color,count=14){const dummy=new THREE.Object3D();for(let i=0;i<count;i++){const idx=pCursor++%MAX_PARTICLES;const p=pObj[idx];if(!p)return;p.alive=true;p.ttl=0.45+Math.random()*0.35;p.age=0;p.color.setHex(color);p.pos.set(x+(Math.random()-0.5)*0.5,y+(Math.random()-0.5)*0.5,z+(Math.random()-0.5)*0.5);p.v.set((Math.random()-0.5)*4,Math.random()*5+1,(Math.random()-0.5)*4);particles.setColorAt(idx,p.color);}if(particles.instanceColor)particles.instanceColor.needsUpdate=true;}
+function spawnParticles(x,y,z,color,count=14){const dummy=new THREE.Object3D();let spawned=0;for(let i=0;i<count;i++){const idx=pCursor++%MAX_PARTICLES;const p=pObj[idx];if(!p)continue;p.alive=true;p.ttl=0.45+Math.random()*0.35;p.age=0;p.color.setHex(color);p.pos.set(x+(Math.random()-0.5)*0.6,y+(Math.random()-0.5)*0.6,z+(Math.random()-0.5)*0.6);p.v.set((Math.random()-0.5)*4.5,Math.random()*5.5+1.2,(Math.random()-0.5)*4.5);particles.setColorAt(idx,p.color);spawned++;}if(spawned>0){particles.count=Math.min(MAX_PARTICLES,particles.count+spawned);if(particles.instanceColor)particles.instanceColor.needsUpdate=true;particles.instanceMatrix.needsUpdate=true;}}
 function updateParticles(dt){const dummy=new THREE.Object3D();let alive=0;pObj.forEach((p,i)=>{if(!p.alive)return;p.age+=dt;if(p.age>p.ttl){p.alive=false;dummy.position.set(0,-100,0);dummy.scale.setScalar(0.01);}else{alive++;p.v.y-=22*dt;p.pos.addScaledVector(p.v,dt);dummy.position.copy(p.pos);const s=1-p.age/p.ttl;dummy.scale.setScalar(0.5+s*0.5);}dummy.updateMatrix();particles.setMatrixAt(i,dummy.matrix);});particles.count=alive;particles.instanceMatrix.needsUpdate=true;if(particles.instanceColor)particles.instanceColor.needsUpdate=true;}
 /* ===== 音效 ===== */
 let actx=null;
@@ -412,11 +411,11 @@ function moveAxis(axis,amount){
   if(axis==='x'){
     const np=player.x+amount;
     // 潜行时检测边缘：若下一步脚下的方块是空气则禁止移动
-    if(sneak&&!flying&&player.onGround){const edgeX=amount>0?Math.floor(np+0.001):Math.floor(np-0.001);if(!solidAt(edgeX,Math.floor(player.y)-1,Math.floor(player.z))){player.vx=0;return;}}
+    if(sneak&&!flying&&player.onGround){const edgeX=amount>0?Math.floor(np-0.3):Math.floor(np+0.3);if(!solidAt(edgeX,Math.floor(player.y)-1,Math.floor(player.z))){player.vx=0;return;}}
     if(collides(np,player.y,player.z)){if(amount>0)player.x=Math.floor(np+player.w)-player.w-EPS;else player.x=Math.floor(np-player.w)+1+player.w+EPS;player.vx=0;}else player.x=np;
   }else if(axis==='z'){
     const np=player.z+amount;
-    if(sneak&&!flying&&player.onGround){const edgeZ=amount>0?Math.floor(np+0.001):Math.floor(np-0.001);if(!solidAt(Math.floor(player.x),Math.floor(player.y)-1,edgeZ)){player.vz=0;return;}}
+    if(sneak&&!flying&&player.onGround){const edgeZ=amount>0?Math.floor(np-0.3):Math.floor(np+0.3);if(!solidAt(Math.floor(player.x),Math.floor(player.y)-1,edgeZ)){player.vz=0;return;}}
     if(collides(player.x,player.y,np)){if(amount>0)player.z=Math.floor(np+player.w)-player.w-EPS;else player.z=Math.floor(np-player.w)+1+player.w+EPS;player.vz=0;}else player.z=np;
   }else{
     const np=player.y+amount;
@@ -539,11 +538,11 @@ function setupInput(){
     if(e.code==='KeyE'&&!e.repeat){if(locked){toggleInventory();return;}}
     const num=['Digit1','Digit2','Digit3','Digit4','Digit5','Digit6','Digit7','Digit8','Digit9'].indexOf(e.code);if(num>=0)selectSlot(num);
     if(inventoryOpen&&e.code==='Escape'){toggleInventory();return;}
+    if(e.code==='KeyP'&&!e.repeat){resetWorld();return;}
     if(!locked)return;
     if(e.code==='KeyF'&&!e.repeat){flying=!flying;sfx.fly();showMsg(flying?'✈ 飞行模式':'🦶 行走模式');}
     if(e.code==='Space'&&!e.repeat){const now=performance.now();if(now-lastSpace<260){flying=!flying;sfx.fly();showMsg(flying?'✈ 飞行模式':'🦶 行走模式');}lastSpace=now;}
     if(e.code==='KeyG'&&!e.repeat){dayPaused=!dayPaused;showMsg(dayPaused?'🌙 昼夜暂停':'☀️ 昼夜继续');}
-    if(e.code==='KeyP'&&!e.repeat)resetWorld();
   });
   document.addEventListener('keyup',(e)=>keys.delete(e.code));window.addEventListener('blur',()=>keys.clear());
   document.addEventListener('mousedown',(e)=>{if(!locked||inventoryOpen)return;try{ensureAudio();}catch(err){}mouseDown.left=e.button===0;mouseDown.right=e.button===2;if(e.button===0)lastBreak=0;if(e.button===2)lastPlace=0;if(e.button===1){e.preventDefault();if(target&&target.dist<=REACH){const id=worldGet(target.x,target.y,target.z);const idx=HOTBAR.indexOf(id);if(idx>=0)selectSlot(idx);}}});
@@ -585,7 +584,7 @@ function animate(){
   if(ready)updateChunks();
   // 网格化队列
   if(meshQueue.length>0){for(let i=0;i<3&&meshQueue.length>0;i++){const[cx,cz]=meshQueue.shift();buildChunkMeshes(cx,cz);}meshQueueSet.clear();}
-  if(ready)updateFallingSands(60);
+  if(ready)updateFallingSands(15);
   if(locked&&!inventoryOpen){updatePlayer(dt);interact(performance.now()/1000);updateHUD(dt);if(ready)maybeSavePlayer(performance.now());}else{highlight.visible=false;ghost.visible=false;}
   updateSky(dt);updateParticles(dt);renderer.render(scene,camera);
 }
